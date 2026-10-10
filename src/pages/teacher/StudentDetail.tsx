@@ -19,6 +19,7 @@ import { db } from "../../firebase";
 import { useScope } from "./scope";
 import { useSession } from "../../lib/auth";
 import { doc as fsDoc, serverTimestamp, updateDoc } from "firebase/firestore";
+import { askText } from "../../components/Modal";
 
 export function StudentDetail() {
   const { sid = "" } = useParams();
@@ -52,7 +53,7 @@ export function StudentDetail() {
   const me = session.kind === "staff" ? session.staff : null;
   const canRename = !!me && (me.role === "admin" || (me.homeroom === true && me.grade === student.grade && me.classNo === student.classNo));
   async function rename() {
-    const n = prompt("학생 이름", student!.name)?.trim();
+    const n = await askText({ title: "학생 이름 고치기", label: `${student!.grade}학년 ${student!.classNo}반 ${student!.number}번`, initial: student!.name, placeholder: "예: 홍길동", maxLength: 20 });
     if (!n || n === student!.name) return;
     try {
       await updateDoc(fsDoc(db, sp(schoolId, `students/${sid}`)), { name: n, updatedAt: serverTimestamp() });

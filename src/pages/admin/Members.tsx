@@ -13,6 +13,7 @@ import { classesOf, GRADES } from "../../lib/classes";
 import { useConfig } from "../../lib/config";
 import { programById } from "../../../shared/domain";
 import { PixelIcon } from "../../components/Pixel";
+import { askConfirm, askText } from "../../components/Modal";
 
 function download(name: string, text: string, type = "text/csv;charset=utf-8") {
   const url = URL.createObjectURL(new Blob([text], { type }));
@@ -32,8 +33,9 @@ export function Members() {
       <PageHeader icon="users" title="구성원 관리" />
       <div className="row" style={{ marginBottom: 14 }}>
         <button className={`choice ${tab === "staff" ? "on" : ""}`} onClick={() => setTab("staff")}><PixelIcon name="users" size={16} /> 교사·담당자</button>
-        <button className={`choice ${tab === "roster" ? "on" : ""}`} onClick={() => setTab("roster")}><PixelIcon name="file" size={16} /> 학생 명단 CSV</button>
         <button className={`choice ${tab === "students" ? "on" : ""}`} onClick={() => setTab("students")}><PixelIcon name="school" size={16} /> 학급별 학생</button>
+        {/* 보기 탭은 왼쪽, 명단 올리기는 오른쪽 끝 */}
+        <button className={`choice ${tab === "roster" ? "on" : ""}`} style={{ marginLeft: "auto" }} onClick={() => setTab("roster")}><PixelIcon name="upload" size={16} /> 학생 명단 CSV 올리기</button>
       </div>
       {tab === "staff" && <StaffManager />}
       {tab === "roster" && <RosterUpload />}
@@ -73,7 +75,7 @@ function StaffManager() {
                     {s.status !== "active" && <button className="btn ok sm" onClick={() => set(s.id, { status: "active" })}>승인</button>}
                     {s.status === "pending" && <button className="btn ghost sm" onClick={() => set(s.id, { status: "rejected" })}>반려</button>}
                     {s.status === "active" && <button className="btn ghost sm" onClick={() => set(s.id, { role: s.role === "admin" ? "teacher" : "admin" })}>{s.role === "admin" ? "담당자 해제" : "담당자 지정"}</button>}
-                    <button className="btn ghost sm" onClick={async () => { if (confirm(`${s.name} 선생님을 삭제할까요?`)) await deleteDoc(doc(db, sp(schoolId, `staff/${s.id}`))); }}>삭제</button>
+                    <button className="btn ghost sm" onClick={async () => { if (await askConfirm({ title: "선생님 삭제", message: `${s.name} 선생님을 삭제할까요?\n다시 쓰려면 선생님이 새로 가입해야 해요.`, ok: "삭제", danger: true })) await deleteDoc(doc(db, sp(schoolId, `staff/${s.id}`))); }}>삭제</button>
                   </div>
                 </td>
               </tr>
@@ -190,7 +192,7 @@ function ClassRoster() {
                 <td>{s.active === false ? "비활성" : "활성"}</td>
                 <td>
                   <div className="row" style={{ gap: 6, flexWrap: "nowrap" }}>
-                    <button className="btn ghost sm" onClick={() => { const n = prompt("이름", s.name); if (n?.trim()) patch(s.id, { name: n.trim() }); }}>이름</button>
+                    <button className="btn ghost sm" onClick={async () => { const n = await askText({ title: "학생 이름 고치기", label: `${s.grade}학년 ${s.classNo}반 ${s.number}번`, initial: s.name, placeholder: "예: 홍길동", maxLength: 20 }); if (n && n !== s.name) patch(s.id, { name: n }); }}>이름</button>
                     <button className="btn ghost sm" onClick={() => patch(s.id, { active: s.active === false })}>{s.active === false ? "활성화" : "비활성"}</button>
                   </div>
                 </td>

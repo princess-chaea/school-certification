@@ -16,12 +16,14 @@ import { NameSetup } from "./pages/student/NameSetup";
 import { StaffApp } from "./pages/teacher/StaffApp";
 import type { StaffDoc, StudentDoc } from "./lib/types";
 import type { User } from "firebase/auth";
+import { DialogHost } from "./components/Modal";
 
 export function App() {
   return (
     <AuthProvider>
       <Gate />
       <ToastHost />
+      <DialogHost />
     </AuthProvider>
   );
 }

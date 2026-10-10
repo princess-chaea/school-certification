@@ -6,6 +6,7 @@ import { useSchool } from "../../lib/school";
 import { logout } from "../../lib/auth";
 import { PixelIcon } from "../../components/Pixel";
 import type { StudentDoc } from "../../lib/types";
+import { askConfirm } from "../../components/Modal";
 
 /** 명단에 이름이 비어 있는 학생: 첫 로그인 때 한 번만 이름 입력 (이후 수정은 담임·학교 담당자) */
 export function NameSetup({ student }: { student: StudentDoc }) {
@@ -19,7 +20,7 @@ export function NameSetup({ student }: { student: StudentDoc }) {
 
   async function save() {
     if (!valid) return;
-    if (!confirm(`'${trimmed}' 맞나요? 한 번 정하면 내가 고칠 수 없고, 담임 선생님만 고칠 수 있어요.`)) return;
+    if (!(await askConfirm({ title: "이 이름이 맞나요?", message: `'${trimmed}'\n한 번 정하면 내가 고칠 수 없고, 담임 선생님만 고칠 수 있어요.`, ok: "이름 정하기", icon: "hand" }))) return;
     setBusy(true);
     setErr(null);
     try {

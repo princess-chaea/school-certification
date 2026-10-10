@@ -13,6 +13,7 @@ import { PixelIcon, PixelMedal } from "../../components/Pixel";
 import { HwpxCertificate } from "../../components/HwpxCertificate";
 import { type AppConfig } from "../../../shared/domain";
 import { classesOf, GRADES } from "../../lib/classes";
+import { askConfirm } from "../../components/Modal";
 
 function Section({ title, children }: { title: string; children: ReactNode }) {
   return (
@@ -71,7 +72,7 @@ export function Settings() {
   }
 
   const saveConfig = () => run("config", async () => {
-    await setDoc(doc(db, sp(schoolId, "config/app")), { medalMultipliers: cfg.medalMultipliers, ai: cfg.ai, certificate: cfg.certificate, updatedAt: serverTimestamp() }, { merge: true });
+    await setDoc(doc(db, sp(schoolId, "config/app")), { medalMultipliers: cfg.medalMultipliers, certificate: cfg.certificate, updatedAt: serverTimestamp() }, { merge: true });
     const r = await call<{ students: number }>("recomputeAll", { schoolId });
     return `저장하고 학생 ${r.students}명의 진행률을 다시 계산했어요.`;
   });
@@ -91,7 +92,7 @@ export function Settings() {
           </div>
         </div>
         <label className="field"><span>학교장 성함 (인증서: “{school.name}장 {principal || "○○○"}”)</span>
-          <input className="input" value={principal} onChange={(e) => setPrincipal(e.target.value)} placeholder="문석주" />
+          <input className="input" value={principal} onChange={(e) => setPrincipal(e.target.value)} placeholder="예: 홍길동" />
         </label>
         <div className="row">
           {school.sealUrl ? <img src={school.sealUrl} alt="직인" style={{ width: 56, height: 56, objectFit: "contain" }} /> : <span className="chip gray">직인 미등록</span>}
@@ -101,7 +102,7 @@ export function Settings() {
         </div>
         <div className="tiny">직인은 인증서의 학교장 이름 마지막 글자에 겹쳐서 크게 찍혀요. 배경이 투명한 PNG가 가장 깔끔해요. 크기는 아래 [인증서]에서 조절해요.</div>
         <label className="field"><span>학생 계정 도메인 (선택: CSV 이메일에 @이 없을 때 붙임)</span>
-          <input className="input" value={domain} onChange={(e) => setDomain(e.target.value.trim())} placeholder="haju.es.kr" />
+          <input className="input" value={domain} onChange={(e) => setDomain(e.target.value.trim())} placeholder="예: gmail.com 또는 학교 계정 도메인" />
         </label>
         <div className="field">
           <span style={{ fontWeight: 600 }}>교사·담당자 가입 방식</span>
@@ -122,19 +123,8 @@ export function Settings() {
         <span className="small muted">항목별 기준 횟수·증빙·확인 방식은 [인증 항목]에서 바꿔요.</span>
       </Section>
 
-      <Section title="AI (Claude) · 교사 업무 보조 전용">
-        <label className="row small" style={{ gap: 6 }}><input type="checkbox" checked={cfg.ai.enabled} onChange={(e) => setCfg({ ...cfg, ai: { ...cfg.ai, enabled: e.target.checked } })} /> 학생이 올린 사진·글을 AI가 1차로 보고 이상한 기록을 교사에게 표시 (학생에게는 AI 결과를 보여 주지 않아요)</label>
-        <div className="row small">
-          사진 확인 모델 <select className="input sm" value={cfg.ai.photoModel} onChange={(e) => setCfg({ ...cfg, ai: { ...cfg.ai, photoModel: e.target.value } })}><option value="claude-haiku-5-5">Claude Haiku 5.5 (저렴)</option><option value="claude-sonnet-5-5">Claude Sonnet 5.5</option><option value="claude-opus-5-5">Claude Opus 5.5</option></select>
-          교사용 모델 <select className="input sm" value={cfg.ai.teacherModel} onChange={(e) => setCfg({ ...cfg, ai: { ...cfg.ai, teacherModel: e.target.value } })}><option value="claude-sonnet-5-5">Claude Sonnet 5.5</option><option value="claude-opus-5-5">Claude Opus 5.5</option><option value="claude-haiku-5-5">Claude Haiku 5.5</option></select>
-          하루 상한 <input className="input sm" type="number" min={0} style={{ width: 90 }} value={cfg.ai.dailyLimit} onChange={(e) => setCfg({ ...cfg, ai: { ...cfg.ai, dailyLimit: Math.max(0, Number(e.target.value) || 0) } })} />회
-        </div>
-      </Section>
-
       <Section title="인증서">
-        <label className="field"><span>수여 날짜 (인증서·한글 출력에 표시)</span>
-          <input className="input" value={cfg.certificate.issueDate} onChange={(e) => setCfg({ ...cfg, certificate: { ...cfg.certificate, issueDate: e.target.value } })} placeholder="2026년 12월 18일" />
-        </label>
+        <span className="small muted">수여 날짜: 교사 확인으로 인증 조건이 채워진 날이 학생 인증서에 바로 들어가요. 상장 배부일로 맞춰 일괄 출력하려면 [인증서] 메뉴에서 날짜를 정해요.</span>
         <label className="field"><span>본문</span>
           <textarea className="input" value={cfg.certificate.body} onChange={(e) => setCfg({ ...cfg, certificate: { ...cfg.certificate, body: e.target.value } })} />
         </label>
@@ -151,7 +141,7 @@ export function Settings() {
       </Section>
 
       <div className="submit-bar" style={{ marginBottom: 20 }}>
-        <button className="btn big" disabled={busy === "config"} onClick={saveConfig}>{busy === "config" ? "저장 중…" : "단계·AI·인증서 설정 저장"}</button>
+        <button className="btn big" disabled={busy === "config"} onClick={saveConfig}>{busy === "config" ? "저장 중…" : "단계·인증서 설정 저장"}</button>
       </div>
 
       <DataTools busy={busy} run={run} />
@@ -175,7 +165,7 @@ function DataTools({ busy, run }: { busy: string | null; run: (label: string, fn
         <select className="input sm" value={g} onChange={(e) => { setG(Number(e.target.value)); setC(1); }}>{GRADES.map((x) => <option key={x} value={x}>{x}학년</option>)}</select>
         <select className="input sm" value={c} onChange={(e) => setC(Number(e.target.value))}>{classesOf(g).map((x) => <option key={x} value={x}>{x}반</option>)}</select>
         <button className="btn secondary sm" disabled={!!busy} onClick={() => run("demo", async () => { const r = await call<{ students: number }>("seedDemo", { schoolId, classes: [{ grade: g, classNo: c }] }); return `예시 학생 ${r.students}명을 만들었어요.`; })}>{busy === "demo" ? "만드는 중…" : "만들기"}</button>
-        <button className="btn ghost sm" disabled={!!busy} onClick={() => confirm("예시(더미) 학생과 기록을 모두 지울까요?") && run("clear", async () => { const r = await call<{ deleted: number }>("clearDemo", { schoolId }); return `예시 데이터 ${r.deleted}건을 지웠어요.`; })}>예시 데이터 모두 지우기</button>
+        <button className="btn ghost sm" disabled={!!busy} onClick={async () => (await askConfirm({ title: "예시 데이터 지우기", message: "예시(더미) 학생과 기록을 모두 지울까요?", ok: "모두 지우기", danger: true })) && run("clear", async () => { const r = await call<{ deleted: number }>("clearDemo", { schoolId }); return `예시 데이터 ${r.deleted}건을 지웠어요.`; })}>예시 데이터 모두 지우기</button>
       </div>
     </Section>
   );

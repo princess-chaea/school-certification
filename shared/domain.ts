@@ -64,7 +64,7 @@ export interface AppConfig {
   medalMultipliers: { bronze: number; silver: number; gold: number };
   programs: ProgramDef[];
   ai: { enabled: boolean; photoModel: string; teacherModel: string; dailyLimit: number }; // 교사 업무 보조 전용 (학생에게 제공하지 않음)
-  certificate: { title: string; issueDate: string; body: string; showSealOnWeb: boolean; sealSizeMm: number };
+  certificate: { title: string; body: string; showSealOnWeb: boolean; sealSizeMm: number }; // 수여일 = 학생별 인증 달성일 (일괄 출력 때 한 날짜로 맞출 수 있음)
 }
 
 const ALL = [1, 2, 3, 4, 5, 6];
@@ -107,7 +107,6 @@ export const DEFAULT_CONFIG: AppConfig = {
   ai: { enabled: true, photoModel: "claude-haiku-5-5", teacherModel: "claude-sonnet-5-5", dailyLimit: 3000 },
   certificate: {
     title: "학교장 인증서",
-    issueDate: "2026년 12월 0일",
     body: "위 학생은 「2026 도전! 꿈 성취 학교장 인증제」에 참가하여 위 분야에서 인증받았기에 이 증서를 드립니다.",
     showSealOnWeb: true,
     sealSizeMm: 24, // 직인 크기: 학교장 이름 마지막 글자에 겹쳐 찍힘
@@ -182,6 +181,7 @@ export interface ProgramProgress {
   medal: Medal;
   thresholds: MedalThresholds;
   tasks?: Record<string, number>; // 과제형: 과제별 진행 수
+  certifiedAt?: string; // 인증(동장 이상)을 처음 달성한 날 YYYY-MM-DD (KST) = 인증서 수여일
 }
 export type StudentProgress = Record<string, ProgramProgress>;
 
@@ -206,6 +206,17 @@ export function computeProgress(config: AppConfig, grade: number, counts: Record
 
 export function isCertified(medal: Medal | undefined) {
   return medal === "bronze" || medal === "silver" || medal === "gold";
+}
+
+/** 새 진행률에 인증 달성일을 이어 붙임: 이미 인증된 항목은 처음 달성한 날을 유지, 새로 인증되면 today, 인증이 풀리면 지움 */
+export function withCertifiedDates(next: StudentProgress, prev: StudentProgress | undefined, today: string): StudentProgress {
+  const out: StudentProgress = {};
+  for (const [id, p] of Object.entries(next)) {
+    const { certifiedAt: _drop, ...rest } = p;
+    void _drop;
+    out[id] = isCertified(p.medal) ? { ...rest, certifiedAt: (isCertified(prev?.[id]?.medal) && prev?.[id]?.certifiedAt) || today } : rest;
+  }
+  return out;
 }
 
 /** 학생 제출 검증 (화면·서버 공통) */

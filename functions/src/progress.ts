@@ -1,8 +1,8 @@
 import { onDocumentWritten } from "firebase-functions/v2/firestore";
 import { logger } from "firebase-functions";
 import { AggregateField } from "firebase-admin/firestore";
-import { db, loadConfig, REGION, FieldValue, sp } from "./common.js";
-import { activePrograms, computeProgress } from "./shared/domain.js";
+import { db, loadConfig, REGION, FieldValue, sp, todayKey } from "./common.js";
+import { activePrograms, computeProgress, withCertifiedDates, type StudentProgress } from "./shared/domain.js";
 
 async function sumSubmissions(schoolId: string, year: number, sid: string, program: string, task?: string) {
   let q = db.collection(sp(schoolId, "submissions")).where("year", "==", year).where("sid", "==", sid).where("status", "==", "active").where("program", "==", program);
@@ -49,7 +49,8 @@ export async function recomputeStudent(schoolId: string, sid: string, expectedYe
       }
     }),
   );
-  const progress = computeProgress(config, grade, counts);
+  // 교사 확인으로 조건이 채워지는 즉시 인증 = 그날이 인증서 수여일
+  const progress = withCertifiedDates(computeProgress(config, grade, counts), snap.get("progress") as StudentProgress | undefined, todayKey());
   await ref.update({ progress, progressUpdatedAt: FieldValue.serverTimestamp() });
 }
 

@@ -285,6 +285,8 @@ table.table td.num { text-align: right; font-variant-numeric: tabular-nums; }
 .login-mark { width: 104px; height: 104px; display: grid; place-items: center; background: var(--navy-50); border: 3px solid var(--navy); box-shadow: 4px 4px 0 var(--navy); }
 .school-result { display: flex; align-items: center; gap: 10px; width: 100%; text-align: left; border: 2px solid var(--line); background: #fff; border-radius: 14px; padding: 12px; cursor: pointer; }
 .school-result:hover, .school-result.on { border-color: var(--navy); background: var(--navy-50); }
+.school-results { max-height: 52vh; overflow-y: auto; padding-right: 2px; }
+mark.hl { background: #fee761; color: inherit; padding: 0 1px; border-radius: 3px; }
 .role-box { border: 2px solid var(--line); border-radius: 14px; background: #fff; overflow: hidden; }
 .role-box.on { border-color: var(--navy); box-shadow: 3px 3px 0 var(--navy); }
 .role-head { display: flex; align-items: center; gap: 12px; width: 100%; padding: 12px; background: none; border: 0; cursor: pointer; font: inherit; color: inherit; }

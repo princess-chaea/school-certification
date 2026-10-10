@@ -3,6 +3,7 @@ import { getFirestore, FieldValue } from "firebase-admin/firestore";
 import { HttpsError, type CallableRequest } from "firebase-functions/v2/https";
 import { setGlobalOptions } from "firebase-functions/v2";
 import { DEFAULT_CONFIG, mergeConfig, type AppConfig } from "./shared/domain.js";
+import { mergeSchool, type SchoolInfo } from "./shared/school.js";
 
 initializeApp();
 export const db = getFirestore();
@@ -10,13 +11,29 @@ export { FieldValue };
 export const REGION = "asia-northeast3";
 setGlobalOptions({ region: REGION, maxInstances: 10 });
 
-let cachedConfig: { at: number; value: AppConfig } | null = null;
-export async function loadConfig(): Promise<AppConfig> {
-  if (cachedConfig && Date.now() - cachedConfig.at < 60_000) return cachedConfig.value;
-  const snap = await db.doc("config/app").get();
+/** schools/{schoolId}/... 경로 */
+export const sp = (schoolId: string, path = "") => (path ? `schools/${schoolId}/${path}` : `schools/${schoolId}`);
+
+export function requireSchoolId(data: unknown): string {
+  const id = String((data as { schoolId?: string })?.schoolId ?? "").trim();
+  if (!/^[A-Za-z0-9_-]{2,40}$/.test(id)) throw new HttpsError("invalid-argument", "학교 정보가 없어요.");
+  return id;
+}
+
+const configCache = new Map<string, { at: number; value: AppConfig }>();
+export async function loadConfig(schoolId: string): Promise<AppConfig> {
+  const hit = configCache.get(schoolId);
+  if (hit && Date.now() - hit.at < 60_000) return hit.value;
+  const snap = await db.doc(sp(schoolId, "config/app")).get();
   const value = snap.exists ? mergeConfig(snap.data() as Partial<AppConfig>) : DEFAULT_CONFIG;
-  cachedConfig = { at: Date.now(), value };
+  configCache.set(schoolId, { at: Date.now(), value });
   return value;
+}
+
+export async function loadSchool(schoolId: string): Promise<SchoolInfo & { status?: string }> {
+  const snap = await db.doc(sp(schoolId)).get();
+  if (!snap.exists) throw new HttpsError("not-found", "학교를 찾을 수 없어요.");
+  return { ...mergeSchool(snap.data() as Partial<SchoolInfo>), status: snap.get("status") };
 }
 
 export interface StaffDoc {
@@ -30,9 +47,20 @@ export interface StaffDoc {
   programs?: string[];
 }
 
-export async function requireStaff(req: CallableRequest, adminOnly = false): Promise<StaffDoc & { uid: string }> {
+export async function isSuper(uid?: string) {
+  if (!uid) return false;
+  return (await db.doc(`superAdmins/${uid}`).get()).exists;
+}
+
+export async function requireSuper(req: CallableRequest) {
+  if (!req.auth || !(await isSuper(req.auth.uid))) throw new HttpsError("permission-denied", "플랫폼 운영자만 사용할 수 있어요.");
+}
+
+/** 그 학교의 승인된 교사(또는 관리자, 플랫폼 운영자) */
+export async function requireStaff(req: CallableRequest, schoolId: string, adminOnly = false): Promise<StaffDoc & { uid: string }> {
   if (!req.auth) throw new HttpsError("unauthenticated", "로그인이 필요합니다.");
-  const snap = await db.doc(`users/${req.auth.uid}`).get();
+  if (await isSuper(req.auth.uid)) return { role: "admin", status: "active", name: "플랫폼 운영자", uid: req.auth.uid };
+  const snap = await db.doc(sp(schoolId, `staff/${req.auth.uid}`)).get();
   const u = snap.data() as StaffDoc | undefined;
   if (!u || u.status !== "active") throw new HttpsError("permission-denied", "승인된 교사만 사용할 수 있습니다.");
   if (adminOnly && u.role !== "admin") throw new HttpsError("permission-denied", "관리자만 사용할 수 있습니다.");

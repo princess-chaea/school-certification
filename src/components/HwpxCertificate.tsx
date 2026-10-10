@@ -1,8 +1,11 @@
 import type { AppConfig, ProgramId } from "../../shared/domain";
+import { principalTitle } from "../../shared/school";
 import type { StudentDoc } from "../lib/types";
+import { useSchool } from "../lib/school";
 
 /** 학교 한글 양식(학교장 인증서.hwpx)과 같은 배치의 웹 인증서 */
 export function HwpxCertificate({ config, program, student }: { config: AppConfig; program: ProgramId; student: Pick<StudentDoc, "grade" | "classNo" | "name"> }) {
+  const school = useSchool();
   const c = config.certificate;
   const [y, m, d] = issueDateParts(c.issueDate);
   return (
@@ -17,7 +20,7 @@ export function HwpxCertificate({ config, program, student }: { config: AppConfi
             {config.programs[program].name}
           </div>
           <div className="r">
-            {c.schoolName}
+            {school.name}
             <br />
             {student.grade}학년 {student.classNo}반
             <br />
@@ -27,8 +30,8 @@ export function HwpxCertificate({ config, program, student }: { config: AppConfi
         <div className="body">&nbsp;&nbsp;{c.body}</div>
         <div className="date">{y}년 {m}월 {d}일</div>
         <div className="principal">
-          {c.principal}
-          {c.showSealOnWeb && <img className="seal" src="/cert/seal.jpg" alt="" />}
+          {principalTitle(school)}
+          {c.showSealOnWeb && school.sealUrl && <img className="seal" src={school.sealUrl} alt="" />}
         </div>
       </div>
     </div>

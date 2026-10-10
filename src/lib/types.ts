@@ -3,6 +3,8 @@ import type { Medal, ProgramId, StudentProgress, EnglishTaskId } from "../../sha
 
 export interface StudentDoc {
   sid: string;
+  email: string;
+  year: number;
   grade: number;
   classNo: number;
   number: number;
@@ -41,6 +43,8 @@ export interface AiReview {
 export interface Submission {
   id: string;
   sid: string;
+  year: number;
+  activityDate?: string;
   grade: number;
   classNo: number;
   program: ProgramId;
@@ -57,6 +61,7 @@ export interface Submission {
   count: number;
   createdByName?: string;
   deleteReason?: string;
+  deletedBy?: string;
   ai?: AiReview;
   isDemo?: boolean;
   studentName?: string;
@@ -76,6 +81,7 @@ export type EnglishStatus = "new" | "practicing" | "ready" | "requested" | "chec
 export interface EnglishItem {
   id: string;
   sid: string;
+  year: number;
   grade: number;
   classNo: number;
   setId: string;

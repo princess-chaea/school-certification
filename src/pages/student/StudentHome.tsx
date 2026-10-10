@@ -1,19 +1,16 @@
-import { useState } from "react";
 import { useNavigate, Link } from "react-router-dom";
-import { doc, updateDoc } from "firebase/firestore";
-import { db } from "../../firebase";
 import { useConfig } from "../../lib/config";
 import { useMySubmissions } from "../../lib/data";
 import type { StudentDoc } from "../../lib/types";
 import { ProgramCard } from "../../components/ProgramCard";
-import { MedalBadge, toast } from "../../components/ui";
+import { MedalBadge } from "../../components/ui";
 import { isCertified, englishProgress, MEDAL_LABEL, type ProgramId } from "../../../shared/domain";
 import { fmtDate } from "../../lib/format";
 
 export function StudentHome({ student }: { student: StudentDoc }) {
   const config = useConfig();
   const nav = useNavigate();
-  const { rows } = useMySubmissions(student.sid);
+  const { rows } = useMySubmissions(student);
   const p = student.progress ?? {};
   const showEnglish = config.programs.english.grades.includes(student.grade);
   const eng = englishProgress(config, p.english?.counts ?? { t1: 0, t2: 0, t3: 0, t4: 0 });
@@ -22,7 +19,6 @@ export function StudentHome({ student }: { student: StudentDoc }) {
 
   return (
     <div className="page">
-      {!student.name && <NameForm sid={student.sid} />}
       <div className="row between">
         <h1>
           {student.name ? `${student.name}의 도전` : "나의 도전"} <span className="muted small">{student.grade}학년 {student.classNo}반 {student.number}번</span>
@@ -95,28 +91,6 @@ export function StudentHome({ student }: { student: StudentDoc }) {
           </div>
         ))}
         <Link to="/records" className="small">내 기록 전체 보기 →</Link>
-      </div>
-    </div>
-  );
-}
-
-function NameForm({ sid }: { sid: string }) {
-  const [name, setName] = useState("");
-  return (
-    <div className="card" style={{ marginBottom: 14, background: "var(--warn-50)" }}>
-      <div className="row">
-        <b>👋 처음 왔네요! 이름을 알려 주세요.</b>
-        <input className="input" style={{ maxWidth: 200 }} value={name} onChange={(e) => setName(e.target.value)} placeholder="이름" />
-        <button
-          className="btn"
-          disabled={!name.trim()}
-          onClick={async () => {
-            await updateDoc(doc(db, "students", sid), { name: name.trim() });
-            toast("반가워요!");
-          }}
-        >
-          저장
-        </button>
       </div>
     </div>
   );

@@ -1,8 +1,12 @@
+import { useState } from "react";
 import { Navigate, Route, Routes, useParams } from "react-router-dom";
 import { AuthProvider, useSession } from "./lib/auth";
+import { SchoolProvider, useSchool } from "./lib/school";
 import { ConfigProvider } from "./lib/config";
+import { TenantCtx } from "./lib/tenant";
 import { Login } from "./pages/Login";
 import { PendingApproval, TeacherSignup } from "./pages/TeacherSignup";
+import { SuperConsole } from "./pages/SuperConsole";
 import { Layout } from "./components/Layout";
 import { Loading, ToastHost } from "./components/ui";
 import { StudentHome } from "./pages/student/StudentHome";
@@ -12,7 +16,8 @@ import { SentencePractice } from "./pages/student/SentencePractice";
 import { Records } from "./pages/student/Records";
 import { CertificatePage } from "./pages/student/CertificatePage";
 import { StaffApp } from "./pages/teacher/StaffApp";
-import type { StudentDoc } from "./lib/types";
+import type { StaffDoc, StudentDoc } from "./lib/types";
+import type { User } from "firebase/auth";
 
 export function App() {
   return (
@@ -25,36 +30,45 @@ export function App() {
 
 function Gate() {
   const s = useSession();
-  const signedIn = s.kind !== "loading" && s.kind !== "signedOut";
+  const [superMode, setSuperMode] = useState(false);
+  if (s.kind === "loading") return <Loading label="학교를 찾는 중…" />;
+  if (s.kind === "signedOut") return <Login />;
+  if ((s.kind === "staffNew" || s.kind === "staff") && s.isSuper && superMode) return <SuperConsole onBack={() => setSuperMode(false)} />;
+  if (s.kind === "staffNew") return <TeacherSignup user={s.user} request={s.request} isSuper={s.isSuper} onSuper={() => setSuperMode(true)} />;
+  const schoolId = s.schoolId;
   return (
-    <ConfigProvider enabled={signedIn}>
-      {s.kind === "loading" ? (
-        <Loading />
-      ) : s.kind === "signedOut" ? (
-        <Login />
-      ) : s.kind === "student" ? (
-        s.student ? <StudentApp student={s.student} /> : <Loading label={s.error ? `학생 정보를 불러오지 못했어요: ${s.error}` : "학생 정보를 준비하는 중…"} />
-      ) : s.kind === "staffNew" ? (
-        <TeacherSignup user={s.user} />
-      ) : s.staff.status !== "active" ? (
-        <PendingApproval staff={s.staff} user={s.user} />
-      ) : (
-        <StaffApp staff={s.staff} />
-      )}
-    </ConfigProvider>
+    <TenantCtx.Provider value={schoolId}>
+      <SchoolProvider schoolId={schoolId}>
+        <ConfigProvider schoolId={schoolId}>
+          {s.kind === "student" ? (
+            s.student ? <StudentApp student={s.student} /> : <Loading label={s.error ? `학생 정보를 불러오지 못했어요: ${s.error}` : "학생 정보를 준비하는 중…"} />
+          ) : s.staff.status !== "active" ? (
+            <PendingWithSchool staff={s.staff} user={s.user} />
+          ) : (
+            <StaffApp staff={s.staff} isSuper={s.isSuper} onSuper={() => setSuperMode(true)} />
+          )}
+        </ConfigProvider>
+      </SchoolProvider>
+    </TenantCtx.Provider>
   );
 }
 
+function PendingWithSchool({ staff, user }: { staff: StaffDoc; user: User }) {
+  const school = useSchool();
+  return <PendingApproval staff={staff} user={user} schoolName={school.name} />;
+}
+
 function StudentApp({ student }: { student: StudentDoc }) {
+  const english = student.grade >= 4;
   const tabs = [
-    { to: "/", label: "🏠 나의 도전", end: true },
-    { to: "/submit/reading", label: "📚 독서" },
-    { to: "/submit/carbon", label: "🌏 탄소중립" },
-    ...(student.grade >= 4 ? [{ to: "/english", label: "🗣️ 영어" }] : []),
-    { to: "/records", label: "📒 내 기록" },
+    { to: "/", icon: "🏠", label: "나의 도전", end: true },
+    { to: "/submit/reading", icon: "📚", label: "독서" },
+    { to: "/submit/carbon", icon: "🌏", label: "탄소중립" },
+    ...(english ? [{ to: "/english", icon: "🗣️", label: "영어" }] : []),
+    { to: "/records", icon: "📒", label: "내 기록" },
   ];
   return (
-    <Layout who={`${student.grade}-${student.classNo} ${student.name || student.sid}`} tabs={tabs}>
+    <Layout who={`${student.grade}-${student.classNo} ${student.name}`} tabs={tabs}>
       <Routes>
         <Route path="/" element={<StudentHome student={student} />} />
         <Route path="/submit/:kind" element={<SubmitPage student={student} />} />

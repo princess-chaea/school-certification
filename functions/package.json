@@ -7,7 +7,7 @@
     "node": "22"
   },
   "scripts": {
-    "sync-shared": "node -e \"const fs=require('fs');fs.mkdirSync('src/shared',{recursive:true});for(const f of ['domain.ts','typing.ts'])fs.copyFileSync('../shared/'+f,'src/shared/'+f);fs.mkdirSync('src/shared/data',{recursive:true});for(const f of fs.readdirSync('../data/english'))fs.copyFileSync('../data/english/'+f,'src/shared/data/'+f)\"",
+    "sync-shared": "node -e \"const fs=require('fs');fs.mkdirSync('src/shared',{recursive:true});for(const f of ['domain.ts','typing.ts','school.ts','roster.ts'])fs.copyFileSync('../shared/'+f,'src/shared/'+f);fs.mkdirSync('src/shared/data',{recursive:true});for(const f of fs.readdirSync('../data/english'))fs.copyFileSync('../data/english/'+f,'src/shared/data/'+f)\"",
     "build": "npm run sync-shared && tsc",
     "serve": "npm run build && firebase emulators:start --only functions"
   },

@@ -13,6 +13,7 @@
   },
   "dependencies": {
     "chart.js": "^4.5.1",
+    "fflate": "^0.8.2",
     "firebase": "^12.4.0",
     "react": "^19.2.0",
     "react-dom": "^19.2.0",

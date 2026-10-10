@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useState } from "react";
-import { Link, useNavigate } from "react-router-dom";
+import { useNavigate } from "react-router-dom";
 import { doc, serverTimestamp, setDoc, updateDoc } from "firebase/firestore";
 import { httpsCallable } from "firebase/functions";
+import { sp, useSchoolId } from "../../lib/tenant";
 import { db, functions } from "../../firebase";
 import { useMyEnglishItems, useSentenceSet } from "../../lib/data";
 import { completedRounds, itemId, ROUNDS_REQUIRED, statusLabel, targetOf } from "../../lib/english";
@@ -13,18 +14,20 @@ import { diffWords, firstLetterHint, isCorrectAnswer, speechMatchRatio } from ".
 import { fmtSec } from "../../lib/format";
 import type { EnglishItem, EnglishRound, StudentDoc } from "../../lib/types";
 import { Stamp, toast } from "../../components/ui";
+import { PageHeader } from "../../components/Layout";
 import { useDingOnCheck } from "./EnglishRoom";
 
 type Step = "type" | "record" | "saved";
 
 export function SentencePractice({ student, setId, no }: { student: StudentDoc; setId: string; no: number }) {
+  const schoolId = useSchoolId();
   const nav = useNavigate();
   const set = useSentenceSet(setId);
-  const { rows: items } = useMyEnglishItems(student.sid);
+  const { rows: items } = useMyEnglishItems(student);
   const ding = useDingOnCheck(items);
   const s = set?.items.find((x) => x.no === no);
   const item = useMemo(() => items?.find((i) => i.setId === setId && i.no === no), [items, setId, no]);
-  const id = itemId(student.sid, setId, no);
+  const id = itemId(student.year, student.sid, setId, no);
   const task = setId.startsWith("task3") ? "t3" : "t1";
 
   const [step, setStep] = useState<Step>("type");
@@ -81,7 +84,7 @@ export function SentencePractice({ student, setId, no }: { student: StudentDoc; 
   async function explain() {
     setAiBusy(true);
     try {
-      const res = await httpsCallable<unknown, { text: string }>(functions, "explainTyping")({ ko: target.ko, answer: target.en, attempts });
+      const res = await httpsCallable<unknown, { text: string }>(functions, "explainTyping")({ schoolId, ko: target.ko, answer: target.en, attempts });
       setAiText(res.data.text);
     } catch (e) {
       setAiText((e as Error).message || "지금은 AI 설명을 쓸 수 없어요.");
@@ -106,7 +109,7 @@ export function SentencePractice({ student, setId, no }: { student: StudentDoc; 
     try {
       const ext = rec.recording.mime.includes("mp4") ? "m4a" : rec.recording.mime.includes("ogg") ? "ogg" : "webm";
       // 문장마다 최신 녹음 1개만 보관 (덮어쓰기)
-      const path = `uploads/${student.sid}/english/${setId}-${no}.${ext}`;
+      const path = `schools/${schoolId}/uploads/${student.sid}/english/${setId}-${no}.${ext}`;
       await uploadBlob(path, rec.recording.blob, rec.recording.mime);
       const round: EnglishRound = {
         typedOk: true,
@@ -120,10 +123,10 @@ export function SentencePractice({ student, setId, no }: { student: StudentDoc; 
       const done = nextRounds.filter((r) => r.typedOk && r.audioPath).length;
       const nextStatus: EnglishItem["status"] = status === "retry" || done >= ROUNDS_REQUIRED ? "ready" : "practicing";
       if (item) {
-        await updateDoc(doc(db, "englishItems", id), { rounds: nextRounds, status: nextStatus, updatedAt: serverTimestamp() });
+        await updateDoc(doc(db, sp(schoolId, "englishItems"), id), { rounds: nextRounds, status: nextStatus, updatedAt: serverTimestamp() });
       } else {
-        await setDoc(doc(db, "englishItems", id), {
-          sid: student.sid, grade: student.grade, classNo: student.classNo, setId, task, no,
+        await setDoc(doc(db, sp(schoolId, "englishItems"), id), {
+          sid: student.sid, year: student.year, grade: student.grade, classNo: student.classNo, setId, task, no,
           rounds: nextRounds, status: nextStatus, updatedAt: serverTimestamp(),
         });
       }
@@ -136,7 +139,7 @@ export function SentencePractice({ student, setId, no }: { student: StudentDoc; 
   }
 
   async function requestCheck() {
-    await updateDoc(doc(db, "englishItems", id), { status: "requested", requestedAt: serverTimestamp(), updatedAt: serverTimestamp() });
+    await updateDoc(doc(db, sp(schoolId, "englishItems"), id), { status: "requested", requestedAt: serverTimestamp(), updatedAt: serverTimestamp() });
     toast("검사 요청 완료! 선생님께 말해 주세요 🙋");
   }
 
@@ -154,14 +157,16 @@ export function SentencePractice({ student, setId, no }: { student: StudentDoc; 
   return (
     <div className="page narrow">
       {ding.stamp && <Stamp title="띵동!" sub={ding.stamp} onDone={ding.clear} />}
-      <div className="row between">
-        <Link to={`/english/set/${setId}`} className="small">← 문장 목록</Link>
-        <div className="row small">
-          {prevNo && <Link to={`/english/set/${setId}/${prevNo}`}>◀ 이전</Link>}
-          <b>#{no}</b>
-          {nextNo && <Link to={`/english/set/${setId}/${nextNo}`}>다음 ▶</Link>}
-        </div>
-      </div>
+      <PageHeader
+        back={`/english/set/${setId}`}
+        title={<>문장 #{no}</>}
+        right={
+          <>
+            <button className="btn ghost sm" disabled={!prevNo} onClick={() => prevNo && nav(`/english/set/${setId}/${prevNo}`)}>◀ 이전</button>
+            <button className="btn ghost sm" disabled={!nextNo} onClick={() => nextNo && nav(`/english/set/${setId}/${nextNo}`)}>다음 ▶</button>
+          </>
+        }
+      />
 
       <div className="card stack" style={{ marginTop: 10 }}>
         <div className="row between">
@@ -284,13 +289,13 @@ export function SentencePractice({ student, setId, no }: { student: StudentDoc; 
 }
 
 function CustomSentenceForm({ student, setId, no, unit, task, prompt }: { student: StudentDoc; setId: string; no: number; unit: number; task: string; prompt?: string }) {
+  const schoolId = useSchoolId();
   const [en, setEn] = useState("");
   const [ko, setKo] = useState("");
   const [busy, setBusy] = useState(false);
   return (
     <div className="page narrow">
-      <Link to={`/english/set/${setId}`} className="small">← 문장 목록</Link>
-      <h1>✏️ #{no} 나만의 {unit}단원 표현</h1>
+      <PageHeader back={`/english/set/${setId}`} title={<>✏️ #{no} 나만의 {unit}단원 표현</>} />
       <p className="muted small">{prompt ?? `${unit}단원에서 배운 표현을 골라 적어 보세요.`} 선생님이 검사할 때 확인해 주세요.</p>
       <div className="card stack">
         <label className="field"><span>영어 문장</span>
@@ -305,8 +310,8 @@ function CustomSentenceForm({ student, setId, no, unit, task, prompt }: { studen
           onClick={async () => {
             setBusy(true);
             try {
-              await setDoc(doc(db, "englishItems", itemId(student.sid, setId, no)), {
-                sid: student.sid, grade: student.grade, classNo: student.classNo, setId, task, no,
+              await setDoc(doc(db, sp(schoolId, "englishItems"), itemId(student.year, student.sid, setId, no)), {
+                sid: student.sid, year: student.year, grade: student.grade, classNo: student.classNo, setId, task, no,
                 custom: { en: en.trim(), ko: ko.trim() }, rounds: [], status: "practicing", updatedAt: serverTimestamp(),
               });
             } catch (e) {

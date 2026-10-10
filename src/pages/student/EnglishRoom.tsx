@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { doc, serverTimestamp, writeBatch } from "firebase/firestore";
+import { sp, useSchoolId } from "../../lib/tenant";
 import { db } from "../../firebase";
 import { useConfig } from "../../lib/config";
 import { useMyEnglishItems, useMySubmissions, useSentenceSet } from "../../lib/data";
@@ -8,13 +9,14 @@ import { completedRounds, itemId, ROUNDS_REQUIRED } from "../../lib/english";
 import type { EnglishItem, StudentDoc } from "../../lib/types";
 import { englishProgress, englishTaskForGrade } from "../../../shared/domain";
 import { MedalBadge, Stamp, toast } from "../../components/ui";
+import { PageHeader } from "../../components/Layout";
 import { playDingDong } from "../../lib/sound";
 
 /** 과제 1~4 현황 + 선생님 확인(띵동) 실시간 알림 */
 export function EnglishRoom({ student }: { student: StudentDoc }) {
   const config = useConfig();
-  const { rows: items } = useMyEnglishItems(student.sid);
-  const { rows: subs } = useMySubmissions(student.sid);
+  const { rows: items } = useMyEnglishItems(student);
+  const { rows: subs } = useMySubmissions(student);
   const counts = student.progress?.english?.counts ?? { t1: 0, t2: 0, t3: 0, t4: 0 };
   const eng = englishProgress(config, counts);
   const ding = useDingOnCheck(items);
@@ -25,10 +27,7 @@ export function EnglishRoom({ student }: { student: StudentDoc }) {
   return (
     <div className="page">
       {ding.stamp && <Stamp title="띵동!" sub={ding.stamp} onDone={ding.clear} />}
-      <div className="row between">
-        <h1>🗣️ 영어 연습실</h1>
-        <div className="row"><MedalBadge medal={eng.medal} size="lg" /><span className="small muted">과제 {eng.completed}개 완료 · {config.englishMedalTasks.bronze}개면 인증</span></div>
-      </div>
+      <PageHeader title="🗣️ 영어 연습실" right={<><span className="small muted">과제 {eng.completed}개 완료 · {config.englishMedalTasks.bronze}개면 인증</span><MedalBadge medal={eng.medal} size="lg" /></>} />
       <div className="grid grid-3">
         {config.englishTasks.map((raw) => {
           const task = englishTaskForGrade(raw, student.grade);
@@ -72,10 +71,11 @@ export function useDingOnCheck(items: EnglishItem[] | null) {
 }
 
 export function SentenceSetPage({ student, setId }: { student: StudentDoc; setId: string }) {
+  const schoolId = useSchoolId();
   const config = useConfig();
   const nav = useNavigate();
   const set = useSentenceSet(setId);
-  const { rows: items } = useMyEnglishItems(student.sid);
+  const { rows: items } = useMyEnglishItems(student);
   const ding = useDingOnCheck(items);
   const [selecting, setSelecting] = useState(false);
   const [picked, setPicked] = useState<Set<number>>(new Set());
@@ -88,7 +88,7 @@ export function SentenceSetPage({ student, setId }: { student: StudentDoc; setId
 
   async function requestCheck(nos: number[]) {
     const batch = writeBatch(db);
-    nos.forEach((no) => batch.update(doc(db, "englishItems", itemId(student.sid, setId, no)), { status: "requested", requestedAt: serverTimestamp(), updatedAt: serverTimestamp() }));
+    nos.forEach((no) => batch.update(doc(db, sp(schoolId, "englishItems"), itemId(student.year, student.sid, setId, no)), { status: "requested", requestedAt: serverTimestamp(), updatedAt: serverTimestamp() }));
     await batch.commit();
     toast(`${nos.length}문장 검사 요청 완료! 선생님께 말해 주세요 🙋`);
     setSelecting(false);
@@ -98,11 +98,7 @@ export function SentenceSetPage({ student, setId }: { student: StudentDoc; setId
   return (
     <div className="page">
       {ding.stamp && <Stamp title="띵동!" sub={ding.stamp} onDone={ding.clear} />}
-      <Link to="/english" className="small">← 영어 연습실</Link>
-      <div className="row between">
-        <h1>{set.title}</h1>
-        <div className="small"><b style={{ fontSize: "1.4rem", color: "var(--ok)" }}>{checked}</b> / {task?.goal ?? set.goal} 통과</div>
-      </div>
+      <PageHeader back="/english" title={set.title} right={<div className="small"><b style={{ fontSize: "1.4rem", color: "var(--ok)" }}>{checked}</b> / {task?.goal ?? set.goal} 통과</div>} />
       <p className="small muted">문장을 눌러 연습해요. ① 해석 보고 영어로 쓰기 → ② 녹음하기를 {ROUNDS_REQUIRED}번 하면 선생님께 검사를 요청할 수 있어요.</p>
       {ready.length > 0 && (
         <div className="card row between" style={{ background: "var(--navy-50)", marginBottom: 12 }}>

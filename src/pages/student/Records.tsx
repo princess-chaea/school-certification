@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { useConfig } from "../../lib/config";
+import { PageHeader } from "../../components/Layout";
 import { useMySubmissions } from "../../lib/data";
 import type { StudentDoc } from "../../lib/types";
 import { fmtDate } from "../../lib/format";
@@ -8,14 +9,14 @@ import type { ProgramId } from "../../../shared/domain";
 
 export function Records({ student }: { student: StudentDoc }) {
   const config = useConfig();
-  const { rows } = useMySubmissions(student.sid);
+  const { rows } = useMySubmissions(student);
   const [filter, setFilter] = useState<ProgramId | "all">("all");
   const [zoom, setZoom] = useState<string | null>(null);
   const list = (rows ?? []).filter((r) => filter === "all" || r.program === filter);
   return (
     <div className="page narrow">
       <Lightbox url={zoom} onClose={() => setZoom(null)} />
-      <h1>📒 내 기록</h1>
+      <PageHeader title="📒 내 기록" />
       <div className="row" style={{ marginBottom: 12 }}>
         {(["all", "reading", "carbon", "english"] as const).map((f) => (
           <button key={f} className={`choice ${filter === f ? "on" : ""}`} onClick={() => setFilter(f)}>

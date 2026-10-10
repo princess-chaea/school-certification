@@ -1,35 +1,32 @@
 rules_version = '2';
 
-// 학생 업로드: uploads/{sid}/... (사진·녹음), 본인만 쓰기, 교사·관리자 읽기
+// 학교별 업로드: schools/{schoolId}/uploads/{학생ID}/... (사진·녹음)
+// 학교 로고·직인: schools/{schoolId}/assets/... (공개 읽기)
 service firebase.storage {
   match /b/{bucket}/o {
     function signedIn() { return request.auth != null; }
-    function isStudentSid(sid) {
-      return signedIn()
-        && request.auth.token.email_verified == true
-        && request.auth.token.email.lower() == sid + '@haju.es.kr';
-    }
-    function isStaff() {
-      return signedIn()
-        && firestore.exists(/databases/(default)/documents/users/$(request.auth.uid))
-        && firestore.get(/databases/(default)/documents/users/$(request.auth.uid)).data.status == 'active';
-    }
-    function isAdmin() {
-      return isStaff() && firestore.get(/databases/(default)/documents/users/$(request.auth.uid)).data.role == 'admin';
-    }
 
-    match /uploads/{sid}/{allPaths=**} {
-      allow read: if isStudentSid(sid) || isStaff();
-      allow create, update: if isStudentSid(sid)
+    match /schools/{schoolId}/uploads/{sid}/{allPaths=**} {
+      function staffPath() { return /databases/(default)/documents/schools/$(schoolId)/staff/$(request.auth.uid); }
+      allow read: if (signedIn() && request.auth.token.email.lower() == sid)
+        || (signedIn() && firestore.exists(staffPath()) && firestore.get(staffPath()).data.status == 'active');
+      allow create, update: if signedIn()
+        && request.auth.token.email_verified == true
+        && request.auth.token.email.lower() == sid
+        && firestore.exists(/databases/(default)/documents/schools/$(schoolId)/students/$(sid))
         && request.resource.size < 12 * 1024 * 1024
         && (request.resource.contentType.matches('image/.*') || request.resource.contentType.matches('audio/.*'));
-      allow delete: if isAdmin();
+      allow delete: if false;
     }
 
-    // 인증서 배경 이미지 등 공용 자산
-    match /assets/{allPaths=**} {
-      allow read: if signedIn();
-      allow write: if isAdmin();
+    match /schools/{schoolId}/assets/{file} {
+      function staffPath() { return /databases/(default)/documents/schools/$(schoolId)/staff/$(request.auth.uid); }
+      allow read: if true;
+      allow write: if signedIn()
+        && ((firestore.exists(staffPath()) && firestore.get(staffPath()).data.status == 'active' && firestore.get(staffPath()).data.role == 'admin')
+            || firestore.exists(/databases/(default)/documents/superAdmins/$(request.auth.uid)))
+        && request.resource.size < 2 * 1024 * 1024
+        && request.resource.contentType.matches('image/.*');
     }
   }
 }

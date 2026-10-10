@@ -3,18 +3,26 @@ import { onAuthStateChanged, signInWithPopup, signOut, type User } from "firebas
 import { doc, onSnapshot } from "firebase/firestore";
 import { httpsCallable } from "firebase/functions";
 import { auth, db, functions, googleProvider } from "../firebase";
-import { parseStudentEmail } from "../../shared/domain";
+import { sp } from "./tenant";
 import type { StaffDoc, StudentDoc } from "./types";
+
+interface WhoAmI {
+  super: boolean;
+  student?: { schoolId: string; sid: string };
+  staff?: { schoolId: string; status: string; role: string };
+  request?: { id: string; schoolName: string; schoolId: string };
+}
 
 export type Session =
   | { kind: "loading" }
   | { kind: "signedOut" }
-  | { kind: "student"; user: User; sid: string; student: StudentDoc | null; error?: string }
-  | { kind: "staffNew"; user: User }
-  | { kind: "staff"; user: User; staff: StaffDoc };
+  | { kind: "student"; user: User; schoolId: string; sid: string; student: StudentDoc | null; error?: string }
+  | { kind: "staffNew"; user: User; isSuper: boolean; request?: WhoAmI["request"] }
+  | { kind: "staff"; user: User; schoolId: string; staff: StaffDoc; isSuper: boolean };
 
-const Ctx = createContext<Session>({ kind: "loading" });
-export const useSession = () => useContext(Ctx);
+const Ctx = createContext<{ session: Session; refresh: () => void }>({ session: { kind: "loading" }, refresh: () => undefined });
+export const useSession = () => useContext(Ctx).session;
+export const useRefreshSession = () => useContext(Ctx).refresh;
 
 export async function login() {
   await signInWithPopup(auth, googleProvider);
@@ -25,6 +33,7 @@ export async function logout() {
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [session, setSession] = useState<Session>({ kind: "loading" });
+  const [tick, setTick] = useState(0);
 
   useEffect(() => {
     let unsubDoc: (() => void) | undefined;
@@ -35,36 +44,42 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         setSession({ kind: "signedOut" });
         return;
       }
-      const parsed = parseStudentEmail(user.email);
-      if (parsed) {
-        // 학생: 첫 로그인 등록 후 내 문서를 실시간 구독
-        setSession({ kind: "student", user, sid: parsed.sid, student: null });
-        httpsCallable(functions, "registerStudent")()
-          .catch((e) => console.warn("registerStudent", e))
-          .finally(() => {
+      setSession({ kind: "loading" });
+      httpsCallable<unknown, WhoAmI>(functions, "whoami")()
+        .then((r) => r.data)
+        .catch((e) => {
+          console.warn("whoami", e);
+          return { super: false } as WhoAmI;
+        })
+        .then((who) => {
+          if (auth.currentUser?.uid !== user.uid) return;
+          if (who.student) {
+            const { schoolId, sid } = who.student;
             unsubDoc = onSnapshot(
-              doc(db, "students", parsed.sid),
-              (snap) => setSession({ kind: "student", user, sid: parsed.sid, student: snap.exists() ? (snap.data() as StudentDoc) : null }),
-              (err) => setSession({ kind: "student", user, sid: parsed.sid, student: null, error: err.message }),
+              doc(db, sp(schoolId, `students/${sid}`)),
+              (snap) => setSession({ kind: "student", user, schoolId, sid, student: snap.exists() ? { ...(snap.data() as StudentDoc), sid } : null }),
+              (err) => setSession({ kind: "student", user, schoolId, sid, student: null, error: err.message }),
             );
-          });
-        return;
-      }
-      // 교사·관리자
-      unsubDoc = onSnapshot(
-        doc(db, "users", user.uid),
-        (snap) => {
-          if (!snap.exists()) setSession({ kind: "staffNew", user });
-          else setSession({ kind: "staff", user, staff: { uid: user.uid, ...(snap.data() as Omit<StaffDoc, "uid">) } });
-        },
-        () => setSession({ kind: "staffNew", user }),
-      );
+          } else if (who.staff) {
+            const { schoolId } = who.staff;
+            unsubDoc = onSnapshot(
+              doc(db, sp(schoolId, `staff/${user.uid}`)),
+              (snap) =>
+                snap.exists()
+                  ? setSession({ kind: "staff", user, schoolId, isSuper: who.super, staff: { uid: user.uid, ...(snap.data() as Omit<StaffDoc, "uid">) } })
+                  : setSession({ kind: "staffNew", user, isSuper: who.super }),
+              () => setSession({ kind: "staffNew", user, isSuper: who.super }),
+            );
+          } else {
+            setSession({ kind: "staffNew", user, isSuper: who.super, request: who.request });
+          }
+        });
     });
     return () => {
       unsubDoc?.();
       unsubAuth();
     };
-  }, []);
+  }, [tick]);
 
-  return <Ctx.Provider value={session}>{children}</Ctx.Provider>;
+  return <Ctx.Provider value={{ session, refresh: () => setTick((t) => t + 1) }}>{children}</Ctx.Provider>;
 }

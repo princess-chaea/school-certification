@@ -6,8 +6,7 @@ import { onDocumentCreated } from "firebase-functions/v2/firestore";
 import { onCall, HttpsError } from "firebase-functions/v2/https";
 import { defineSecret } from "firebase-functions/params";
 import { logger } from "firebase-functions";
-import { db, loadConfig, REGION, FieldValue, requireStaff, staffCanSeeStudent, todayKey } from "./common.js";
-import { parseStudentEmail } from "./shared/domain.js";
+import { db, loadConfig, REGION, FieldValue, requireStaff, requireSchoolId, staffCanSeeStudent, todayKey, sp } from "./common.js";
 
 export const ANTHROPIC_API_KEY = defineSecret("ANTHROPIC_API_KEY");
 
@@ -16,8 +15,8 @@ function client() {
 }
 
 /** 하루 AI 호출 상한 확인 + 사용량 기록. 상한을 넘으면 false */
-async function reserveUsage(kind: string, limit: number): Promise<boolean> {
-  const ref = db.doc(`aiUsage/${todayKey()}`);
+async function reserveUsage(schoolId: string, kind: string, limit: number): Promise<boolean> {
+  const ref = db.doc(sp(schoolId, `aiUsage/${todayKey()}`));
   return db.runTransaction(async (tx) => {
     const snap = await tx.get(ref);
     const total = Number(snap.get("total") ?? 0);
@@ -27,9 +26,9 @@ async function reserveUsage(kind: string, limit: number): Promise<boolean> {
   });
 }
 
-async function recordTokens(usage: { input_tokens?: number; output_tokens?: number } | undefined, model: string) {
+async function recordTokens(schoolId: string, usage: { input_tokens?: number; output_tokens?: number } | undefined, model: string) {
   if (!usage) return;
-  await db.doc(`aiUsage/${todayKey()}`).set(
+  await db.doc(sp(schoolId, `aiUsage/${todayKey()}`)).set(
     {
       tokens: {
         [model.replace(/[^a-z0-9]/gi, "_")]: {
@@ -86,7 +85,7 @@ bookTitle: null. activityType: null. question: null.`;
 }
 
 export const reviewSubmission = onDocumentCreated(
-  { document: "submissions/{id}", region: REGION, secrets: [ANTHROPIC_API_KEY], memory: "512MiB", timeoutSeconds: 120 },
+  { document: "schools/{schoolId}/submissions/{id}", region: REGION, secrets: [ANTHROPIC_API_KEY], memory: "512MiB", timeoutSeconds: 120 },
   async (event) => {
     const snap = event.data;
     if (!snap) return;
@@ -94,9 +93,10 @@ export const reviewSubmission = onDocumentCreated(
     if (data.source !== "student" || !data.photoPath || data.isDemo) return;
     if (!(data.program === "reading" || data.program === "carbon" || (data.program === "english" && data.task === "t2"))) return;
 
-    const config = await loadConfig();
+    const schoolId = event.params.schoolId;
+    const config = await loadConfig(schoolId);
     if (!config.ai.enabled) return;
-    if (!(await reserveUsage("photo", config.ai.dailyLimit))) {
+    if (!(await reserveUsage(schoolId, "photo", config.ai.dailyLimit))) {
       logger.warn("AI daily limit reached");
       return;
     }
@@ -123,7 +123,7 @@ export const reviewSubmission = onDocumentCreated(
           },
         ],
       });
-      await recordTokens(response.usage, model);
+      await recordTokens(schoolId, response.usage, model);
       if (response.stop_reason === "refusal" || !response.parsed_output) {
         await snap.ref.update({ ai: { verdict: "check", reason: "AI가 판단하지 못했어요. 선생님 확인이 필요해요.", model, at: FieldValue.serverTimestamp() } });
         return;
@@ -143,13 +143,15 @@ export const reviewSubmission = onDocumentCreated(
 // ── A-3: 영어 타이핑 오답 설명 (Haiku) ──────────────────────────────
 
 export const explainTyping = onCall({ region: REGION, secrets: [ANTHROPIC_API_KEY] }, async (req) => {
-  const email = req.auth?.token.email;
-  if (!parseStudentEmail(email)) throw new HttpsError("permission-denied", "학생 계정만 사용할 수 있어요.");
+  const schoolId = requireSchoolId(req.data);
+  const email = String(req.auth?.token.email ?? "").toLowerCase();
+  const stu = email ? await db.doc(sp(schoolId, `students/${email}`)).get() : null;
+  if (!stu?.exists) throw new HttpsError("permission-denied", "학생 계정만 사용할 수 있어요.");
   const { ko, answer, attempts } = req.data as { ko?: string; answer?: string; attempts?: string[] };
   if (!answer || !Array.isArray(attempts) || !attempts.length) throw new HttpsError("invalid-argument", "입력이 부족해요.");
-  const config = await loadConfig();
+  const config = await loadConfig(schoolId);
   if (!config.ai.enabled) throw new HttpsError("unavailable", "지금은 AI 설명을 쓸 수 없어요.");
-  if (!(await reserveUsage("typing", config.ai.dailyLimit))) throw new HttpsError("resource-exhausted", "오늘 AI 사용량이 다 찼어요.");
+  if (!(await reserveUsage(schoolId, "typing", config.ai.dailyLimit))) throw new HttpsError("resource-exhausted", "오늘 AI 사용량이 다 찼어요.");
 
   const model = config.ai.photoModel;
   const response = await client().messages.create({
@@ -167,7 +169,7 @@ export const explainTyping = onCall({ region: REGION, secrets: [ANTHROPIC_API_KE
       },
     ],
   });
-  await recordTokens(response.usage, model);
+  await recordTokens(schoolId, response.usage, model);
   if (response.stop_reason === "refusal") return { text: "이번 문장은 선생님께 직접 물어보자!" };
   const text = response.content.flatMap((b) => (b.type === "text" ? [b.text] : [])).join("\n").trim();
   return { text: text || "틀린 단어를 천천히 다시 비교해 보자!" };
@@ -176,19 +178,20 @@ export const explainTyping = onCall({ region: REGION, secrets: [ANTHROPIC_API_KE
 // ── A-4: 교사용 피드백·누가기록 초안 (Sonnet) ─────────────────────────
 
 export const draftComment = onCall({ region: REGION, secrets: [ANTHROPIC_API_KEY], timeoutSeconds: 120 }, async (req) => {
-  const staff = await requireStaff(req);
+  const schoolId = requireSchoolId(req.data);
+  const staff = await requireStaff(req, schoolId);
   const { sid, kind } = req.data as { sid?: string; kind?: "feedback" | "record" };
   if (!sid) throw new HttpsError("invalid-argument", "학생을 선택하세요.");
-  const stuSnap = await db.doc(`students/${sid}`).get();
+  const stuSnap = await db.doc(sp(schoolId, `students/${sid}`)).get();
   if (!stuSnap.exists) throw new HttpsError("not-found", "학생을 찾을 수 없어요.");
-  const stu = stuSnap.data() as { grade: number; classNo: number; progress?: unknown };
+  const stu = stuSnap.data() as { grade: number; classNo: number; year: number; progress?: unknown };
   if (!staffCanSeeStudent(staff, stu)) throw new HttpsError("permission-denied", "담당 학생이 아니에요.");
 
-  const config = await loadConfig();
+  const config = await loadConfig(schoolId);
   if (!config.ai.enabled) throw new HttpsError("unavailable", "AI 기능이 꺼져 있어요.");
-  if (!(await reserveUsage("teacher", config.ai.dailyLimit))) throw new HttpsError("resource-exhausted", "오늘 AI 사용량이 다 찼어요.");
+  if (!(await reserveUsage(schoolId, "teacher", config.ai.dailyLimit))) throw new HttpsError("resource-exhausted", "오늘 AI 사용량이 다 찼어요.");
 
-  const subs = await db.collection("submissions").where("sid", "==", sid).orderBy("createdAt", "desc").limit(40).get();
+  const subs = await db.collection(sp(schoolId, "submissions")).where("year", "==", Number((stu as { year?: number }).year)).where("sid", "==", sid).orderBy("createdAt", "desc").limit(40).get();
   const records = subs.docs
     .map((d) => d.data())
     .filter((d) => d.status === "active")
@@ -231,7 +234,7 @@ export const draftComment = onCall({ region: REGION, secrets: [ANTHROPIC_API_KEY
     betas: ["server-side-fallback-2026-07-01"],
     fallbacks: "default",
   });
-  await recordTokens(response.usage, model);
+  await recordTokens(schoolId, response.usage, model);
   if (response.stop_reason === "refusal") throw new HttpsError("failed-precondition", "AI가 초안을 만들지 못했어요. 직접 작성해 주세요.");
   const text = response.content.flatMap((b) => (b.type === "text" ? [b.text] : [])).join("\n").trim();
   return { text };

@@ -1,6 +1,8 @@
 import { useState } from "react";
-import { Link, useNavigate } from "react-router-dom";
+import { useNavigate } from "react-router-dom";
+import { PageHeader } from "../../components/Layout";
 import { addDoc, collection, serverTimestamp } from "firebase/firestore";
+import { sp, useSchoolId } from "../../lib/tenant";
 import { db } from "../../firebase";
 import { useConfig } from "../../lib/config";
 import { useRecorder } from "../../lib/useRecorder";
@@ -12,6 +14,7 @@ import { playFanfare } from "../../lib/sound";
 
 /** 영어 과제 4: EBSe 펀리딩 동화책 2분 이상 낭독 녹음 */
 export function AudioSubmit({ student }: { student: StudentDoc }) {
+  const schoolId = useSchoolId();
   const config = useConfig();
   const nav = useNavigate();
   const task = config.englishTasks.find((t) => t.id === "t4")!;
@@ -27,10 +30,10 @@ export function AudioSubmit({ student }: { student: StudentDoc }) {
     setBusy(true);
     try {
       const ext = rec.recording.mime.includes("mp4") ? "m4a" : rec.recording.mime.includes("ogg") ? "ogg" : "webm";
-      const path = `uploads/${student.sid}/english/t4-${newId()}.${ext}`;
+      const path = `schools/${schoolId}/uploads/${student.sid}/english/t4-${newId()}.${ext}`;
       await uploadBlob(path, rec.recording.blob, rec.recording.mime);
-      await addDoc(collection(db, "submissions"), {
-        sid: student.sid, grade: student.grade, classNo: student.classNo,
+      await addDoc(collection(db, sp(schoolId, "submissions")), {
+        sid: student.sid, year: student.year, grade: student.grade, classNo: student.classNo,
         program: "english", task: "t4", bookTitle: title.trim(), audioPath: path,
         durationSec: Math.round(rec.recording.durationMs / 1000),
         status: "active", source: "student", count: 1, createdAt: serverTimestamp(),
@@ -47,8 +50,7 @@ export function AudioSubmit({ student }: { student: StudentDoc }) {
   return (
     <div className="page narrow">
       {stamp && <Stamp title="Great job!" sub="낭독 녹음 완료" onDone={() => nav("/english")} />}
-      <Link to="/english" className="small">← 영어 연습실</Link>
-      <h1>📖 EBSe 펀리딩 낭독 녹음</h1>
+      <PageHeader back="/english" title="📖 EBSe 펀리딩 낭독 녹음" />
       <ol className="small muted" style={{ lineHeight: 1.8 }}>
         <li><a href={task.link} target="_blank" rel="noreferrer">펀리딩 사이트 열기 ↗</a>에서 동화책을 골라요.</li>
         <li>책 제목을 적고 🎙️ 버튼을 눌러 <b>{Math.round(minMs / 60000)}분 이상</b> 소리 내어 읽어요.</li>

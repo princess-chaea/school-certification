@@ -11,10 +11,12 @@ export const PROGRAM_IDS: ProgramId[] = ["reading", "carbon", "english"];
 export const MEDAL_ORDER: Medal[] = ["none", "bronze", "silver", "gold"];
 export const MEDAL_LABEL: Record<Medal, string> = { none: "도전 중", bronze: "동", silver: "은", gold: "금" };
 
-/** 학생 이메일 26GCNN@haju.es.kr → 학년(G)·반(C)·번호(NN) */
-export function parseStudentEmail(email: string | null | undefined) {
+/** 학생 이메일 26GCNN@(학교 도메인) → 학년(G)·반(C)·번호(NN) */
+export function parseStudentEmail(email: string | null | undefined, domain = SCHOOL_EMAIL_DOMAIN) {
   if (!email) return null;
-  const m = /^(\d{2})(\d)(\d)(\d{2})@haju\.es\.kr$/i.exec(email.trim());
+  const [local, host] = email.trim().toLowerCase().split("@");
+  if (!host || host !== domain.toLowerCase()) return null;
+  const m = /^(\d{2})(\d)(\d)(\d{2})$/.exec(local);
   if (!m) return null;
   const grade = Number(m[2]);
   const classNo = Number(m[3]);
@@ -69,11 +71,9 @@ export interface AppConfig {
   };
   certificate: {
     title: string;
-    schoolName: string;
-    principal: string;
     issueDate: string; // 예: "2026년 12월 0일"
     body: string;
-    showSealOnWeb: boolean; // 웹 인증서에 직인 표시 (기본: 표시 안 함, 한글 일괄 출력에는 항상 포함)
+    showSealOnWeb: boolean; // 웹 인증서에 직인 표시 (관리자 설정에서 끌 수 있음)
   };
 }
 
@@ -153,11 +153,9 @@ export const DEFAULT_CONFIG: AppConfig = {
   },
   certificate: {
     title: "학교장 인증서",
-    schoolName: "하주초등학교",
-    principal: "하주초등학교장 문석주",
     issueDate: "2026년 12월 0일",
     body: "위 학생은 「2026 도전! 꿈 성취 학교장 인증제」에 참가하여 위 분야에서 인증받았기에 이 증서를 드립니다.",
-    showSealOnWeb: false,
+    showSealOnWeb: true,
   },
 };
 

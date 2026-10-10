@@ -1,3 +1,16 @@
+@font-face {
+  font-family: "HakgyoansimPoster";
+  src: url("/fonts/HakgyoansimPosterB.woff2") format("woff2");
+  font-weight: 700;
+  font-display: swap;
+}
+@font-face {
+  font-family: "KERISBAEUM";
+  src: url("/fonts/KERISBAEUM-B.woff2") format("woff2");
+  font-weight: 400 900;
+  font-display: swap;
+}
+
 :root {
   --navy: #1d3c8f;
   --navy-700: #16306f;
@@ -25,7 +38,10 @@
   --english: #8b4ad8;
   --radius: 16px;
   --shadow: 0 1px 2px rgba(16, 24, 40, 0.06), 0 4px 16px rgba(16, 24, 40, 0.06);
-  font-family: "Noto Sans KR", system-ui, -apple-system, sans-serif;
+  /* 전역 글꼴: 대제목 = 학교안심 포스터체, 나머지 = 케리스배움체 */
+  --font-title: "HakgyoansimPoster", "KERISBAEUM", "Noto Sans KR", sans-serif;
+  --font-body: "KERISBAEUM", "Noto Sans KR", system-ui, -apple-system, sans-serif;
+  font-family: var(--font-body);
   color: var(--ink);
   background: var(--bg);
   -webkit-text-size-adjust: 100%;
@@ -46,15 +62,44 @@ a { color: var(--navy); }
   box-shadow: 0 2px 8px rgba(0,0,0,.12);
 }
 .app-header img { width: 34px; height: 34px; background: #fff; border-radius: 50%; padding: 2px; }
-.app-header .title { font-weight: 800; font-size: 1.05rem; line-height: 1.1; }
+.app-header .title { font-family: var(--font-title); font-weight: 700; font-size: 1.2rem; line-height: 1.1; }
+.app-header .title small { font-family: var(--font-body); }
 .app-header .title small { display: block; font-weight: 500; font-size: .72rem; opacity: .8; }
 .app-header .spacer { flex: 1; }
 .app-header .who { font-size: .85rem; opacity: .9; text-align: right; }
 .app-header button { background: rgba(255,255,255,.15); border: 0; color: #fff; border-radius: 10px; padding: 6px 10px; cursor: pointer; }
 
-.nav-tabs { display: flex; gap: 4px; overflow-x: auto; padding: 8px 16px 0; background: var(--card); border-bottom: 1px solid var(--line); position: sticky; top: 54px; z-index: 15; }
-.nav-tabs a { white-space: nowrap; padding: 10px 14px; text-decoration: none; color: var(--ink-2); font-weight: 600; border-bottom: 3px solid transparent; }
+.nav-tabs { display: flex; gap: 2px; overflow-x: auto; padding: 6px 16px 0; background: var(--card); border-bottom: 1px solid var(--line); position: sticky; top: 54px; z-index: 15; }
+.nav-tabs a { display: inline-flex; align-items: center; gap: 6px; white-space: nowrap; padding: 10px 14px; text-decoration: none; color: var(--ink-2); font-weight: 700; border-bottom: 3px solid transparent; }
+.nav-tabs a .ico { font-size: 1.1rem; }
 .nav-tabs a.active { color: var(--navy); border-color: var(--navy); }
+
+.page-head { display: flex; align-items: center; gap: 10px; margin: 4px 0 12px; }
+.page-head h1 { margin: 0; flex: 1; min-width: 0; }
+.page-head-right { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; justify-content: flex-end; }
+.back-btn { flex: none; width: 42px; height: 42px; border-radius: 12px; border: 1px solid var(--line); background: #fff; font-size: 1.2rem; font-weight: 800; color: var(--navy); cursor: pointer; }
+.back-btn:hover { background: var(--navy-50); }
+
+/* 폰: 탭을 화면 하단에 고정 */
+@media (max-width: 640px) {
+  .nav-tabs { position: fixed; top: auto; bottom: 0; left: 0; right: 0; z-index: 30; padding: 4px 4px calc(4px + env(safe-area-inset-bottom)); border-top: 1px solid var(--line); border-bottom: 0; justify-content: space-around; gap: 0; box-shadow: 0 -2px 12px rgba(16, 24, 40, .08); overflow: visible; }
+  .nav-tabs a { flex: 1; flex-direction: column; gap: 2px; padding: 6px 2px; border-bottom: 0; border-radius: 10px; font-size: .72rem; }
+  .nav-tabs a .ico { font-size: 1.35rem; }
+  .nav-tabs a.active { background: var(--navy-50); }
+  .has-tabs main { padding-bottom: calc(76px + env(safe-area-inset-bottom)); }
+  .app-header { padding: 8px 12px; }
+  .app-header img { width: 30px; height: 30px; }
+  .app-header .title { font-size: 1.05rem; }
+  .app-header button { padding: 6px 8px; font-size: .8rem; }
+  h1 { font-size: 1.3rem; }
+  .page-head h1 { font-size: 1.2rem; }
+  .page-head { flex-wrap: wrap; }
+  .page-head-right { width: 100%; justify-content: flex-start; }
+  .has-tabs main .page { padding-bottom: 96px; }
+  .btn.big { min-height: 52px; font-size: 1rem; padding: 10px 16px; }
+  .row > .btn.big { flex: 1 1 100%; }
+  .toast { bottom: calc(88px + env(safe-area-inset-bottom)); }
+}
 
 .page { max-width: 1100px; margin: 0 auto; padding: 16px; }
 .page.narrow { max-width: 720px; }
@@ -67,7 +112,7 @@ a { color: var(--navy); }
 .muted { color: var(--ink-2); }
 .small { font-size: .85rem; }
 .tiny { font-size: .75rem; color: var(--ink-3); }
-h1 { font-size: 1.4rem; margin: 6px 0 12px; }
+h1 { font-family: var(--font-title); font-weight: 700; font-size: 1.6rem; margin: 6px 0 12px; letter-spacing: .01em; }
 h2 { font-size: 1.15rem; margin: 18px 0 10px; }
 h3 { font-size: 1rem; margin: 0 0 6px; }
 
@@ -188,17 +233,6 @@ table.table td.num { text-align: right; font-variant-numeric: tabular-nums; }
 .login img { width: 108px; }
 .gbtn { display: inline-flex; align-items: center; gap: 10px; border: 1px solid #dadce0; background: #fff; border-radius: 12px; padding: 12px 18px; font-weight: 700; cursor: pointer; min-height: 52px; width: 100%; justify-content: center; }
 
-/* ── 인증서 ──────────────────────────── */
-.cert-sheet { width: min(100%, 560px); aspect-ratio: 1 / 1.414; margin: 0 auto; background: #fff; border: 2px solid #111; padding: 7% 8%; display: flex; flex-direction: column; font-family: "Nanum Myeongjo", serif; color: #111; position: relative; background-size: cover; background-position: center; container-type: inline-size; }
-.cert-sheet.custom-bg { border: 0; }
-.cert-title { text-align: center; font-size: 8.5cqw; font-weight: 800; letter-spacing: .08em; margin: 2% 0 12%; }
-.cert-meta { display: flex; justify-content: space-between; align-items: flex-start; font-size: 4.2cqw; line-height: 1.8; }
-.cert-meta .right { text-align: right; }
-.cert-body { font-size: 4.6cqw; line-height: 2; text-align: justify; margin: 14% 0 10%; word-break: keep-all; }
-.cert-date { text-align: center; font-size: 4.4cqw; margin-bottom: 9%; }
-.cert-principal { text-align: center; font-size: 6cqw; font-weight: 800; margin-top: auto; }
-.cert-medal { position: absolute; right: 7%; top: 5%; }
-
 @media print {
   .app-header, .nav-tabs, .no-print { display: none !important; }
   body, .page { background: #fff; padding: 0; margin: 0; }
@@ -214,10 +248,10 @@ table.table td.num { text-align: right; font-variant-numeric: tabular-nums; }
 }
 
 /* ── 한글 양식 인증서 (학교장 인증서.hwpx 배치) ── */
-.hwpx-cert { position: relative; width: min(100%, 560px); aspect-ratio: 210 / 297; margin: 0 auto; background: #fff; container-type: inline-size; font-family: "Nanum Myeongjo", serif; color: #111; box-shadow: var(--shadow); }
+.hwpx-cert { position: relative; width: min(100%, 560px); aspect-ratio: 210 / 297; margin: 0 auto; background: #fff; container-type: inline-size; font-family: var(--font-body); color: #111; box-shadow: var(--shadow); }
 .hwpx-cert .frame { position: absolute; inset: 0; width: 100%; height: 100%; }
 .hwpx-cert .inner { position: absolute; inset: 8.5% 11.5% 9%; display: flex; flex-direction: column; }
-.hwpx-cert .t { text-align: center; font-size: 7.2cqw; font-weight: 800; margin-top: 5%; letter-spacing: .02em; }
+.hwpx-cert .t { font-family: var(--font-title); text-align: center; font-size: 7.2cqw; font-weight: 800; margin-top: 5%; letter-spacing: .02em; }
 .hwpx-cert .meta { display: flex; justify-content: space-between; font-size: 3.6cqw; line-height: 1.75; margin-top: 12%; }
 .hwpx-cert .meta .r { text-align: right; }
 .hwpx-cert .body { font-size: 4.3cqw; line-height: 1.9; text-align: left; word-break: keep-all; margin-top: 12%; }
@@ -225,3 +259,50 @@ table.table td.num { text-align: right; font-variant-numeric: tabular-nums; }
 .hwpx-cert .principal { position: relative; text-align: center; font-size: 5cqw; font-weight: 800; margin-top: 9%; }
 .hwpx-cert .seal { position: absolute; width: 13cqw; right: 6%; top: -40%; mix-blend-mode: multiply; }
 @media print { .hwpx-cert { width: 190mm; box-shadow: none; } }
+
+/* ── 제출 화면 ── */
+.submit-card { display: grid; grid-template-columns: 220px 1fr; gap: 16px; align-items: start; }
+.photo-slot { position: relative; aspect-ratio: 3 / 4; border-radius: 14px; border: 2px dashed #cfd6e4; background: #f8fafc center/cover no-repeat; display: grid; place-items: center; overflow: hidden; }
+.photo-slot[style] { border-style: solid; border-color: var(--line); }
+.photo-change { position: absolute; bottom: 8px; left: 50%; transform: translateX(-50%); background: rgba(255,255,255,.92); }
+.submit-bar { display: flex; gap: 10px; justify-content: flex-end; align-items: center; margin-top: 16px; flex-wrap: wrap; }
+@media (max-width: 640px) {
+  .submit-card { grid-template-columns: 1fr; }
+  .photo-slot { aspect-ratio: 4 / 3; }
+  .submit-bar { position: sticky; bottom: calc(72px + env(safe-area-inset-bottom)); background: linear-gradient(transparent, var(--bg) 30%); padding-top: 14px; }
+  .submit-bar .btn { flex: 1; }
+}
+
+.login { position: relative; }
+.signup-corner { position: absolute; top: 14px; left: 14px; border: 1px solid rgba(255,255,255,.4); background: rgba(255,255,255,.14); color: #fff; border-radius: 12px; padding: 9px 14px; font-weight: 700; cursor: pointer; backdrop-filter: blur(4px); }
+.signup-corner:hover { background: rgba(255,255,255,.24); }
+.login-mark { width: 96px; height: 96px; border-radius: 50%; display: grid; place-items: center; font-size: 3rem; background: radial-gradient(circle at 30% 30%, #ffe680, var(--gold)); box-shadow: 0 6px 20px rgba(232, 177, 0, .35); }
+.school-result { display: flex; align-items: center; gap: 10px; width: 100%; text-align: left; border: 2px solid var(--line); background: #fff; border-radius: 14px; padding: 12px; cursor: pointer; }
+.school-result:hover, .school-result.on { border-color: var(--navy); background: var(--navy-50); }
+
+.logo-fallback { width: 34px; height: 34px; border-radius: 50%; background: #fff; display: grid; place-items: center; font-size: 1.1rem; }
+
+/* ── 교사 화면 ── */
+.scope-bar { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; margin-bottom: 14px; padding: 10px; background: var(--card); border-radius: 14px; border: 1px solid var(--line); }
+.input.sm { min-height: 38px; padding: 6px 10px; width: auto; border-radius: 10px; }
+.tile { background: var(--card); border-radius: var(--radius); box-shadow: var(--shadow); padding: 14px 16px; }
+.tile .k { font-size: .82rem; color: var(--ink-2); }
+.tile .v { font-size: 1.9rem; font-weight: 900; color: var(--ink); line-height: 1.15; font-variant-numeric: tabular-nums; }
+.tile .s { font-size: .78rem; color: var(--ink-3); }
+.medalbar { display: flex; height: 22px; border-radius: 6px; overflow: hidden; gap: 2px; background: transparent; }
+.medalbar > div { height: 100%; min-width: 0; position: relative; }
+.medalbar .none { background: #e5e7eb; }
+.medalbar .bronze { background: var(--bronze); }
+.medalbar .silver { background: var(--silver); }
+.medalbar .gold { background: var(--gold); }
+.legend { display: flex; gap: 12px; flex-wrap: wrap; font-size: .78rem; color: var(--ink-2); }
+.legend i { display: inline-block; width: 10px; height: 10px; border-radius: 3px; margin-right: 4px; vertical-align: -1px; }
+.cell-medal { display: inline-flex; align-items: center; gap: 6px; }
+.cell-medal .medal { width: 24px; height: 24px; font-size: .7rem; }
+.clickable { cursor: pointer; }
+.clickable:hover td { background: var(--navy-50); }
+.queue-row { display: grid; grid-template-columns: 28px 1fr auto; gap: 10px; align-items: center; }
+@media (max-width: 640px) { .queue-row { grid-template-columns: 28px 1fr; } .queue-row .actions { grid-column: 1 / -1; } }
+.print-only { margin-top: 20px; }
+.print-page { margin-bottom: 20px; }
+@media print { .print-page { page-break-after: always; margin: 0; } }

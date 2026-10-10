@@ -2,9 +2,7 @@ import type { EnglishItem, SentenceItem } from "./types";
 
 export const ROUNDS_REQUIRED = 3;
 
-export function itemId(sid: string, setId: string, no: number) {
-  return `${sid}_${setId}_${no}`;
-}
+export { englishItemId as itemId } from "../../shared/roster";
 
 /** 이 문장에서 지금 연습할 정답 (학생 작성 칸은 학생이 쓴 문장) */
 export function targetOf(s: SentenceItem, item?: EnglishItem) {

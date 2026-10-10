@@ -385,6 +385,12 @@ mark.hl { background: #fee761; color: inherit; padding: 0 1px; border-radius: 3p
 .quest-list { display: flex; flex-direction: column; gap: 12px; }
 .quest-item { display: flex; align-items: center; gap: 12px; text-align: left; cursor: pointer; background: #fff; width: 100%; }
 .quest-item b { display: block; font-size: 1.05rem; }
+/* 인증 항목 관리 목록: 폰에서는 버튼 줄을 이름 아래로 (이름이 세로로 찌그러지지 않게) */
+@media (max-width: 640px) {
+  .program-admin-row { flex-wrap: wrap; }
+  .program-admin-row > span:nth-child(2) { flex: 1 1 calc(100% - 80px) !important; }
+  .program-admin-row .row-actions { flex: 1 1 100%; justify-content: flex-end; flex-wrap: wrap; }
+}
 .ellipsis { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .cert-tile { display: flex; flex-direction: column; align-items: center; gap: 8px; text-align: center; cursor: pointer; background: #fff; }
 .cert-tile.locked { opacity: .65; cursor: default; filter: grayscale(.6); }

@@ -12,8 +12,7 @@
 | 특이 사항 | 원문 오타 2건 수정(43번, 36번) | 단원마다 1칸(5·10·…·40번, 총 8칸)은 **학생이 단원 표현을 직접 입력** |
 | 대체 표현 | — | `[afternoon, evening]`, `he/she`, `this[that]` 등은 `alternatives`로 모두 정답 처리 |
 
-- 영어 인증에 필요한 과제 수(기본 2개)는 관리자 화면에서 설정한다.
-- 금·은·동 단계는 **선택한 과제 전체 진행률**에 40/70/100%를 적용한다.
+- 금·은·동은 **완료한 과제 개수**로 정한다. 🥉 동 = 2개(= 영어 분야 학교장 인증, 시상) / 🥈 은 = 3개 / 🥇 금 = 4개. 개수는 관리자 화면에서 설정한다.
 
 ## 2. 문장 하나의 흐름
 
@@ -105,8 +104,7 @@ english/{uid}/items/{setId}_{no}
 
 progress/{uid}.programs.english
   tasks: {task1: {checked: 12, goal: 30}, task3: {checked: 40, goal: 40}, task2: {...}, task4: {...}}
-  selected: ["task1","task3"]      # 학생이 고른 과제
-  percent, medal
+  completedTasks, medal            # 동(2)=인증 / 은(3) / 금(4)
 ```
 
 - **보안 규칙**

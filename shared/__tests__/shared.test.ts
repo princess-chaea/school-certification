@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { isCorrectAnswer, diffWords, firstLetterHint, normalizeSentence, speechMatchRatio } from "../typing";
 import { parseNeisSchoolInfo, neisResultMessage, shortSchoolName, mergeSchool, principalTitle } from "../school";
-import { thresholdsFor, medalFor, HAJU_PROGRAMS, DEFAULT_CONFIG as BASE_CONFIG, computeProgress, nextStep, validateEvidence } from "../domain";
+import { thresholdsFor, medalFor, HAJU_PROGRAMS, DEFAULT_CONFIG as BASE_CONFIG, computeProgress, nextStep, validateEvidence, withCertifiedDates } from "../domain";
 import { PROGRAM_TEMPLATES } from "../templates";
 import { ICONS, PALETTE } from "../../src/components/pixelArt";
 import { ICON_GROUPS, ACTIVITY_ICONS } from "../../src/components/pixelArtActivities";
@@ -99,6 +99,18 @@ describe("domain", () => {
       expect(Object.keys(t.targetByGrade).length).toBe(t.grades.length);
       expect(ICONS[t.icon]).toBeTruthy();
     }
+  });
+});
+
+describe("certified date", () => {
+  const t = { bronze: 1, silver: 2, gold: 3 };
+  it("keeps the first day a program was certified, sets today when newly certified, clears when lost", () => {
+    const prev = { a: { count: 2, medal: "silver" as const, thresholds: t, certifiedAt: "2026-05-01" }, c: { count: 1, medal: "bronze" as const, thresholds: t, certifiedAt: "2026-04-01" } };
+    const next = { a: { count: 3, medal: "gold" as const, thresholds: t }, b: { count: 1, medal: "bronze" as const, thresholds: t }, c: { count: 0, medal: "none" as const, thresholds: t } };
+    const out = withCertifiedDates(next, prev, "2026-06-10");
+    expect(out.a.certifiedAt).toBe("2026-05-01");
+    expect(out.b.certifiedAt).toBe("2026-06-10");
+    expect(out.c.certifiedAt).toBeUndefined();
   });
 });
 

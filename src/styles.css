@@ -349,10 +349,9 @@ mark.hl { background: #fee761; color: inherit; padding: 0 1px; border-radius: 3p
 
 /* ── 레트로 아케이드 카드 ── */
 .px-card { border: 3px solid #1f2240 !important; box-shadow: 4px 4px 0 #1f2240; border-radius: 8px; }
-.px-card:not(:disabled):hover { transform: translate(-1px, -1px); box-shadow: 5px 5px 0 #1f2240; }
-.px-card:not(:disabled):active { transform: translate(2px, 2px); box-shadow: 2px 2px 0 #1f2240; }
-/* 팝업 카드는 마우스를 올려도 움직이지 않게 */
-.px-card.dialog:hover, .px-card.dialog:active { transform: none; box-shadow: 4px 4px 0 #1f2240; }
+/* 눌리는 효과는 누를 수 있는 카드(버튼·링크)에만: 입력 폼 카드가 마우스를 따라 들썩이지 않게 */
+:is(button, a).px-card:not(:disabled):hover { transform: translate(-1px, -1px); box-shadow: 5px 5px 0 #1f2240; }
+:is(button, a).px-card:not(:disabled):active { transform: translate(2px, 2px); box-shadow: 2px 2px 0 #1f2240; }
 .program-card { text-align: left; cursor: pointer; background: #fff; }
 .program-card:disabled { cursor: default; color: inherit; }
 .program-card h3 { margin: 4px 0 2px; font-family: var(--font-title); font-weight: 700; font-size: 1.15rem; }

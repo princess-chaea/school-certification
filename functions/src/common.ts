@@ -25,7 +25,10 @@ export async function loadConfig(schoolId: string): Promise<AppConfig> {
   const hit = configCache.get(schoolId);
   if (hit && Date.now() - hit.at < 60_000) return hit.value;
   const snap = await db.doc(sp(schoolId, "config/app")).get();
-  const value = snap.exists ? mergeConfig(snap.data() as Partial<AppConfig>) : DEFAULT_CONFIG;
+  const merged = snap.exists ? mergeConfig(snap.data() as Partial<AppConfig>) : DEFAULT_CONFIG;
+  // AI 모델·하루 상한은 학교가 아니라 서버 관리자가 정함: 코드 기본값 + platform/settings.ai (Firebase 콘솔에서 수정)
+  const platform = await db.doc("platform/settings").get();
+  const value = { ...merged, ai: { ...DEFAULT_CONFIG.ai, ...((platform.get("ai") as Partial<AppConfig["ai"]>) ?? {}) } };
   configCache.set(schoolId, { at: Date.now(), value });
   return value;
 }

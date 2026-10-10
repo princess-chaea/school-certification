@@ -6,7 +6,7 @@ import { useSchool } from "../../lib/school";
 import type { StudentDoc } from "../../lib/types";
 import { PageHeader } from "../../components/Layout";
 import { Empty, MedalBadge, toast } from "../../components/ui";
-import { HwpxCertificate, issueDateParts } from "../../components/HwpxCertificate";
+import { HwpxCertificate, issueDateParts, todayIso } from "../../components/HwpxCertificate";
 import { medalOf } from "../teacher/Overview";
 import { isCertified, MEDAL_LABEL, activePrograms, programById } from "../../../shared/domain";
 import { PixelIcon } from "../../components/Pixel";
@@ -40,6 +40,7 @@ export function Certificates() {
   const [printing, setPrinting] = useState(false);
   const [plain, setPlain] = useState(false); // 테두리 없는 판: 학교 상장 용지에 인쇄
   const [withSeal, setWithSeal] = useState(true);
+  const [awardDate, setAwardDate] = useState(todayIso()); // 일괄 출력: 상장 배부 날짜로 모두 맞춤
 
   const list = useMemo(() => {
     const out: Array<{ s: StudentDoc & { id: string }; p: string }> = [];
@@ -66,7 +67,7 @@ export function Certificates() {
       const out = buildCertificatesHwpx(
         new Uint8Array(template),
         list.map(({ s, p }) => ({ field: programById(config, p)?.name ?? p, grade: s.grade, classNo: s.classNo, name: s.name })),
-        { date: issueDateParts(config.certificate.issueDate), schoolName: school.name, principalTitle: principalTitle(school), year: school.year, seal, sealSizeMm: config.certificate.sealSizeMm },
+        { date: issueDateParts(awardDate), schoolName: school.name, principalTitle: principalTitle(school), year: school.year, seal, sealSizeMm: config.certificate.sealSizeMm },
       );
       save(`${school.shortName}_학교장인증서${plain ? "(테두리X)" : ""}_${program === "all" ? "전체" : programById(config, program)?.name ?? program}_${list.length}명.hwpx`, out as BlobPart, "application/hwp+zip");
     } catch (e) {
@@ -77,7 +78,7 @@ export function Certificates() {
   }
 
   function csv() {
-    const [y, m, d] = issueDateParts(config.certificate.issueDate);
+    const [y, m, d] = issueDateParts(awardDate);
     const lines = ["학년,반,번호,이름,인증분야,단계,연,월,일", ...list.map(({ s, p }) => [s.grade, s.classNo, s.number, s.name, programById(config, p)?.name ?? p, MEDAL_LABEL[medalOf(s, p) ?? "none"], y, m, d].join(","))];
     save(`${school.shortName}_인증명단_메일머지.csv`, "﻿" + lines.join("\n"), "text/csv;charset=utf-8");
   }
@@ -92,7 +93,11 @@ export function Certificates() {
         <label className="row small" style={{ gap: 4 }}><input type="checkbox" checked={includeDemo} onChange={(e) => setIncludeDemo(e.target.checked)} /> 예시 학생 포함</label>
       </div>
       <div className="card stack no-print">
-        <div className="small muted">분야별로 <b>동(계획서 인증 기준) 이상</b>을 달성한 학생이에요. 수여 날짜·학교장·직인은 [설정]에서 바꿀 수 있어요. (현재 수여일: {config.certificate.issueDate})</div>
+        <div className="small muted">분야별로 <b>동(계획서 인증 기준) 이상</b>을 달성한 학생이에요. 학생 화면 인증서는 인증을 달성한 날짜로 바로 나오고, 여기서 일괄 출력할 때는 아래 수여 날짜로 모두 맞춰요. 학교장·직인은 [설정]에서 바꿀 수 있어요.</div>
+        <label className="row small" style={{ gap: 8, fontWeight: 700 }}>
+          수여 날짜 (상장 배부일)
+          <input className="input sm" type="date" value={awardDate} onChange={(e) => setAwardDate(e.target.value || todayIso())} />
+        </label>
         <div className="row">
           <span className="small" style={{ fontWeight: 700 }}>양식</span>
           <button className={`choice ${!plain ? "on" : ""}`} onClick={() => setPlain(false)}>테두리 있음</button>
@@ -111,7 +116,7 @@ export function Certificates() {
       {list[0] && (
         <div className="cert-preview no-print">
           <div className="tiny">미리보기 · 첫 번째 학생</div>
-          <HwpxCertificate config={config} program={list[0].p} student={list[0].s} plain={plain} seal={withSeal} />
+          <HwpxCertificate config={config} program={list[0].p} student={list[0].s} plain={plain} seal={withSeal} date={awardDate} />
         </div>
       )}
       {rows === null ? <div className="muted">불러오는 중…</div> : list.length === 0 ? <Empty>아직 인증(동 이상)을 달성한 학생이 없어요.</Empty> : (
@@ -124,7 +129,7 @@ export function Certificates() {
       )}
       {printing && (
         <div className="print-only">
-          {list.map(({ s, p }) => <div key={s.id + p} className="print-page"><HwpxCertificate config={config} program={p} student={s} plain={plain} seal={withSeal} /></div>)}
+          {list.map(({ s, p }) => <div key={s.id + p} className="print-page"><HwpxCertificate config={config} program={p} student={s} plain={plain} seal={withSeal} date={awardDate} /></div>)}
           <button className="btn no-print" onClick={() => setPrinting(false)}>인쇄 미리보기 닫기</button>
         </div>
       )}

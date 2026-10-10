@@ -159,7 +159,7 @@ export function TeacherSignup({ user, existing, isSuper, onSuper }: { user: User
         {!school ? (
           <>
             <div className="row">
-              <input className="input" style={{ flex: 1, minWidth: 180 }} value={q} autoFocus onChange={(e) => setQ(e.target.value)} onKeyDown={(e) => e.key === "Enter" && search()} placeholder="학교 이름을 입력하면 바로 찾아요 (예: 하주)" />
+              <input className="input" style={{ flex: 1, minWidth: 180 }} value={q} autoFocus onChange={(e) => setQ(e.target.value)} onKeyDown={(e) => e.key === "Enter" && search()} placeholder="학교 이름을 입력하면 바로 찾아요 (예: 한국초)" />
             </div>
             <div className="tiny">{searching ? "찾는 중…" : hits && hits.length >= 30 ? "학교가 많아요. 이름을 더 입력하면 좁혀져요." : "교육부 NEIS 학교 정보에서 찾아요."}</div>
             {hits && (

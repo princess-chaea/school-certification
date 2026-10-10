@@ -39,3 +39,58 @@ export function LogoutButton({ className = "btn ghost sm", label = "로그아웃
     </>
   );
 }
+
+// ── 시스템 팝업(confirm/prompt) 대신 쓰는 인증제 테마 팝업 ─────────────────
+type Dialog =
+  | { kind: "confirm"; title: string; message: string; ok: string; danger?: boolean; icon: string; resolve: (v: boolean) => void }
+  | { kind: "text"; title: string; label: string; initial: string; ok: string; placeholder?: string; maxLength?: number; icon: string; resolve: (v: string | null) => void };
+let showDialog: ((d: Dialog | null) => void) | null = null;
+
+/** 확인 팝업: 확인 → true, 취소·닫기 → false */
+export function askConfirm(o: { title: string; message: string; ok?: string; danger?: boolean; icon?: string }): Promise<boolean> {
+  return new Promise((resolve) => {
+    if (!showDialog) return resolve(false);
+    showDialog({ kind: "confirm", ok: "확인", icon: o.danger ? "alert" : "check", ...o, resolve });
+  });
+}
+/** 입력 팝업: 확인 → 입력값(앞뒤 공백 제거), 취소·닫기 → null */
+export function askText(o: { title: string; label: string; initial?: string; ok?: string; placeholder?: string; maxLength?: number; icon?: string }): Promise<string | null> {
+  return new Promise((resolve) => {
+    if (!showDialog) return resolve(null);
+    showDialog({ kind: "text", ok: "저장", initial: "", icon: "pen", ...o, resolve });
+  });
+}
+
+/** App 에 한 번 놓아 두는 팝업 자리 */
+export function DialogHost() {
+  const [d, setD] = useState<Dialog | null>(null);
+  const [text, setText] = useState("");
+  showDialog = (next) => {
+    setText(next?.kind === "text" ? next.initial : "");
+    setD(next);
+  };
+  if (!d) return null;
+  const close = (v: boolean | string | null) => {
+    if (d.kind === "confirm") d.resolve(v === true);
+    else d.resolve(typeof v === "string" ? v : null);
+    setD(null);
+  };
+  return (
+    <Modal title={d.title} icon={d.icon} onClose={() => close(d.kind === "confirm" ? false : null)}>
+      {d.kind === "confirm" ? (
+        <p style={{ margin: 0, whiteSpace: "pre-line", lineHeight: 1.7 }}>{d.message}</p>
+      ) : (
+        <label className="field">
+          <span>{d.label}</span>
+          <input className="input" autoFocus value={text} maxLength={d.maxLength} placeholder={d.placeholder}
+            onChange={(e) => setText(e.target.value)} onKeyDown={(e) => e.key === "Enter" && text.trim() && close(text.trim())} />
+        </label>
+      )}
+      <div className="row" style={{ justifyContent: "flex-end", marginTop: 14 }}>
+        <button className="btn ghost" onClick={() => close(d.kind === "confirm" ? false : null)}>취소</button>
+        <button className={`btn ${d.kind === "confirm" && d.danger ? "danger" : ""}`} autoFocus={d.kind === "confirm"} disabled={d.kind === "text" && !text.trim()}
+          onClick={() => close(d.kind === "confirm" ? true : text.trim())}>{d.ok}</button>
+      </div>
+    </Modal>
+  );
+}

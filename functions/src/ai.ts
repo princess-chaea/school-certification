@@ -3,11 +3,10 @@ import { zodOutputFormat } from "@anthropic-ai/sdk/helpers/zod";
 import { z } from "zod";
 import { getStorage } from "firebase-admin/storage";
 import { onDocumentCreated } from "firebase-functions/v2/firestore";
-import { onCall, HttpsError } from "firebase-functions/v2/https";
 import type { ProgramDef, TaskDef } from "./shared/domain.js";
 import { defineSecret } from "firebase-functions/params";
 import { logger } from "firebase-functions";
-import { db, loadConfig, REGION, FieldValue, requireStaff, requireSchoolId, staffCanSeeStudent, todayKey, sp } from "./common.js";
+import { db, loadConfig, REGION, FieldValue, todayKey, sp } from "./common.js";
 
 export const ANTHROPIC_API_KEY = defineSecret("ANTHROPIC_API_KEY");
 
@@ -164,68 +163,3 @@ async function reviewText(schoolId: string, config: Awaited<ReturnType<typeof lo
     logger.error("text review failed", { err: String(err) });
   }
 }
-
-// ── A-4: 교사용 피드백·누가기록 초안 (Sonnet) ─────────────────────────
-
-export const draftComment = onCall({ region: REGION, secrets: [ANTHROPIC_API_KEY], timeoutSeconds: 120 }, async (req) => {
-  const schoolId = requireSchoolId(req.data);
-  const staff = await requireStaff(req, schoolId);
-  const { sid, kind } = req.data as { sid?: string; kind?: "feedback" | "record" };
-  if (!sid) throw new HttpsError("invalid-argument", "학생을 선택하세요.");
-  const stuSnap = await db.doc(sp(schoolId, `students/${sid}`)).get();
-  if (!stuSnap.exists) throw new HttpsError("not-found", "학생을 찾을 수 없어요.");
-  const stu = stuSnap.data() as { grade: number; classNo: number; year: number; progress?: unknown };
-  if (!staffCanSeeStudent(staff, stu)) throw new HttpsError("permission-denied", "담당 학생이 아니에요.");
-
-  const config = await loadConfig(schoolId);
-  if (!config.ai.enabled) throw new HttpsError("unavailable", "AI 기능이 꺼져 있어요.");
-  if (!(await reserveUsage(schoolId, "teacher", config.ai.dailyLimit))) throw new HttpsError("resource-exhausted", "오늘 AI 사용량이 다 찼어요.");
-
-  const subs = await db.collection(sp(schoolId, "submissions")).where("year", "==", Number((stu as { year?: number }).year)).where("sid", "==", sid).orderBy("createdAt", "desc").limit(40).get();
-  const records = subs.docs
-    .map((d) => d.data())
-    .filter((d) => d.status === "active")
-    .map((d) => {
-      const date = d.createdAt?.toDate?.().toISOString().slice(0, 10) ?? "";
-      const parts = [date, config.programs.find((p) => p.id === d.program)?.name ?? d.program];
-      for (const [k, v] of Object.entries((d.fields ?? {}) as Record<string, string>)) if (v) parts.push(`${k}: ${v}`);
-      if (d.activityType) parts.push(`활동: ${d.activityType}`);
-      if (d.text) parts.push(`소감: ${String(d.text).slice(0, 120)}`);
-      if (d.source === "teacher") parts.push(`교사 관찰 ${d.count}회`);
-      return "- " + parts.join(" / ");
-    })
-    .join("\n");
-
-  const instruction =
-    kind === "record"
-      ? `학교생활기록부 '창의적 체험활동' 또는 '행동특성 및 종합의견'에 참고할 수 있는 누가기록 초안을 2~3문장으로 써 주세요.
-- 관찰 가능한 사실과 성장 중심, '~함', '~임' 같은 기록체 종결.
-- 학생 이름은 쓰지 말고 주어를 생략하세요. 과장·추측 금지.`
-      : `담임 선생님이 학생에게 남길 격려 피드백 초안을 2문장으로 써 주세요.
-- 학생의 노력과 꾸준함을 구체적으로 칭찬하고, 다음 도전을 가볍게 제안.
-- 다정한 말투, 다른 학생과 비교 금지.`;
-
-  const model = config.ai.teacherModel;
-  const params = {
-    model,
-    max_tokens: 2048,
-    output_config: { effort: "low" as const },
-    system: `당신은 초등학교 교사의 업무를 돕는 보조자입니다. 「학교장 인증제」(${config.programs.filter((p) => p.enabled).map((p) => p.name).join(", ")}) 활동 기록을 바탕으로 초안을 씁니다. 교사가 검토·수정한 뒤 사용합니다. 이모지는 쓰지 마세요.`,
-    messages: [
-      {
-        role: "user" as const,
-        content: `${instruction}\n\n[학년] ${stu.grade}학년\n[진행 현황] ${JSON.stringify(stu.progress ?? {})}\n[최근 활동 기록]\n${records || "(기록 없음)"}`,
-      },
-    ],
-  };
-  // Sonnet은 안전 분류기 오판에 대비해 서버 측 대체 모델(fallbacks: "default")을 켠다
-  const response = await client().beta.messages.create({
-    ...params,
-    betas: ["server-side-fallback-2026-07-01"],
-    fallbacks: "default",
-  });
-  await recordTokens(schoolId, response.usage, model);
-  if (response.stop_reason === "refusal") throw new HttpsError("failed-precondition", "AI가 초안을 만들지 못했어요. 직접 작성해 주세요.");
-  const text = response.content.flatMap((b) => (b.type === "text" ? [b.text] : [])).join("\n").trim();
-  return { text };
-});

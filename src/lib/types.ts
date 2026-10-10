@@ -14,6 +14,9 @@ export interface StudentDoc {
   isDemo?: boolean;
   progress?: StudentProgress;
   lastLoginAt?: Timestamp;
+  feedback?: string; // 선생님 한마디 (학생 홈에 표시)
+  feedbackByName?: string;
+  feedbackAt?: Timestamp;
 }
 
 /** 교사·학교 담당자 (역할은 겹칠 수 있음) */

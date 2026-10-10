@@ -42,16 +42,20 @@ export function LogoutButton({ className = "btn ghost sm", label = "로그아웃
 
 // ── 시스템 팝업(confirm/prompt) 대신 쓰는 인증제 테마 팝업 ─────────────────
 type Dialog =
-  | { kind: "confirm"; title: string; message: string; ok: string; danger?: boolean; icon: string; resolve: (v: boolean) => void }
+  | { kind: "confirm"; title: string; message: string; ok: string; danger?: boolean; notice?: boolean; icon: string; resolve: (v: boolean) => void }
   | { kind: "text"; title: string; label: string; initial: string; ok: string; placeholder?: string; maxLength?: number; icon: string; resolve: (v: string | null) => void };
 let showDialog: ((d: Dialog | null) => void) | null = null;
 
-/** 확인 팝업: 확인 → true, 취소·닫기 → false */
-export function askConfirm(o: { title: string; message: string; ok?: string; danger?: boolean; icon?: string }): Promise<boolean> {
+/** 확인 팝업: 확인 → true, 취소·닫기 → false (notice: 확인 버튼만 있는 안내) */
+export function askConfirm(o: { title: string; message: string; ok?: string; danger?: boolean; notice?: boolean; icon?: string }): Promise<boolean> {
   return new Promise((resolve) => {
     if (!showDialog) return resolve(false);
     showDialog({ kind: "confirm", ok: "확인", icon: o.danger ? "alert" : "check", ...o, resolve });
   });
+}
+/** 안내 팝업 (확인 버튼 하나) */
+export function notice(title: string, message: string, icon = "alert"): Promise<boolean> {
+  return askConfirm({ title, message, notice: true, icon });
 }
 /** 입력 팝업: 확인 → 입력값(앞뒤 공백 제거), 취소·닫기 → null */
 export function askText(o: { title: string; label: string; initial?: string; ok?: string; placeholder?: string; maxLength?: number; icon?: string }): Promise<string | null> {
@@ -87,7 +91,7 @@ export function DialogHost() {
         </label>
       )}
       <div className="row" style={{ justifyContent: "flex-end", marginTop: 14 }}>
-        <button className="btn ghost" onClick={() => close(d.kind === "confirm" ? false : null)}>취소</button>
+        {!(d.kind === "confirm" && d.notice) && <button className="btn ghost" onClick={() => close(d.kind === "confirm" ? false : null)}>취소</button>}
         <button className={`btn ${d.kind === "confirm" && d.danger ? "danger" : ""}`} autoFocus={d.kind === "confirm"} disabled={d.kind === "text" && !text.trim()}
           onClick={() => close(d.kind === "confirm" ? true : text.trim())}>{d.ok}</button>
       </div>

@@ -139,6 +139,29 @@ function staffDraft(input: JoinInput, email: string) {
   return out;
 }
 
+async function hasActiveAdmin(schoolId: string) {
+  const snap = await db.collection(sp(schoolId, "staff")).where("role", "==", "admin").where("status", "==", "active").limit(1).get();
+  return !snap.empty;
+}
+
+/**
+ * 대비책: 학교 담당자가 한 명도 없을 때 승인된 교사가 [내 역할]에서 담당자를 맡음
+ * check: true 이면 담당자가 있는지만 알려 줌
+ */
+export const claimAdmin = onCall({ region: REGION }, async (req) => {
+  if (!req.auth) throw new HttpsError("unauthenticated", "로그인이 필요해요.");
+  const { schoolId, check } = (req.data ?? {}) as { schoolId?: string; check?: boolean };
+  if (!schoolId || !/^[A-Za-z0-9_-]{2,40}$/.test(schoolId)) throw new HttpsError("invalid-argument", "학교를 선택하세요.");
+  const ref = db.doc(sp(schoolId, `staff/${req.auth.uid}`));
+  const me = await ref.get();
+  if (!me.exists || me.get("status") !== "active") throw new HttpsError("permission-denied", "승인된 교사만 할 수 있어요.");
+  const has = await hasActiveAdmin(schoolId);
+  if (check) return { hasAdmin: has };
+  if (has) throw new HttpsError("failed-precondition", "이미 학교 담당자가 있어요. 담당자에게 지정을 요청하세요.");
+  await ref.update({ role: "admin", updatedAt: FieldValue.serverTimestamp() });
+  return { hasAdmin: true, claimed: true };
+});
+
 /**
  * 교사·학교 담당자 가입 (역할은 겹쳐서 선택 가능)
  * - 학교 가입 방식(joinPolicy)이 'open'(기본)이면 바로 사용, 'approval'이면 학교 담당자 승인 대기
@@ -168,11 +191,14 @@ export const requestJoin = onCall({ region: REGION }, async (req) => {
   const cur = await ref.get();
   const keepAdmin = cur.exists && cur.get("role") === "admin" && cur.get("status") === "active";
   const wantsAdmin = Boolean(input.admin) || created;
-  const active = policy === "open" || (cur.exists && cur.get("status") === "active");
+  // 대비책: 학교 담당자가 한 명도 없으면 담당자를 신청한 교사가 바로 담당자 (승인해 줄 사람이 없으므로)
+  const noAdmin = !created && !(await hasActiveAdmin(schoolId));
+  const claim = wantsAdmin && noAdmin;
+  const active = policy === "open" || claim || (cur.exists && cur.get("status") === "active");
   await ref.set(
     {
       ...draft,
-      role: keepAdmin || (wantsAdmin && (policy === "open" || created)) ? "admin" : "teacher",
+      role: keepAdmin || claim || (wantsAdmin && (policy === "open" || created)) ? "admin" : "teacher",
       requestedAdmin: wantsAdmin,
       status: active ? "active" : "pending",
       createdAt: cur.get("createdAt") ?? FieldValue.serverTimestamp(),

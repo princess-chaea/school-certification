@@ -4,7 +4,8 @@ import { doc, orderBy, where } from "firebase/firestore";
 import { useCollection } from "../../lib/data";
 import { sp, useSchoolId } from "../../lib/tenant";
 import { useConfig } from "../../lib/config";
-import type { StudentDoc, Submission } from "../../lib/types";
+import type { EnglishItem, StudentDoc, Submission } from "../../lib/types";
+import { EnglishGroupCard, englishGroups, recordTime } from "../../components/EnglishItemCard";
 import { fmtDate } from "../../lib/format";
 import { Lightbox, StorageAudio, StorageImage, toast } from "../../components/ui";
 import { PageHeader } from "../../components/Layout";
@@ -18,9 +19,12 @@ import { useScope } from "./scope";
 import { useSession } from "../../lib/auth";
 import { doc as fsDoc, serverTimestamp, updateDoc } from "firebase/firestore";
 import { askText } from "../../components/Modal";
+import { deleteStudentFlow } from "../../lib/students";
+import { useNavigate } from "react-router-dom";
 
 export function StudentDetail() {
   const { sid = "" } = useParams();
+  const nav = useNavigate();
   const schoolId = useSchoolId();
   const config = useConfig();
   const { scope } = useScope();
@@ -32,6 +36,13 @@ export function StudentDetail() {
   useEffect(() => onSnapshot(doc(db, sp(schoolId, `students/${sid}`)), (s) => setStudent(s.exists() ? (s.data() as StudentDoc) : null), () => setStudent(null)), [schoolId, sid]);
   const cons = student ? [where("year", "==", student.year), where("grade", "==", student.grade), where("classNo", "==", student.classNo), ...(scope.program ? [where("program", "==", scope.program)] : []), where("sid", "==", sid), orderBy("createdAt", "desc")] : [];
   const { rows } = useCollection<Submission>(student ? sp(schoolId, "submissions") : null, cons, [schoolId, sid, student?.year, scope.program]);
+  // 영어 문장 녹음 (검사 요청·인정·다시 하기) — 같은 범위 조건, 정렬은 화면에서
+  const itemCons = student ? [where("year", "==", student.year), where("grade", "==", student.grade), where("classNo", "==", student.classNo), ...(scope.program ? [where("program", "==", scope.program)] : []), where("sid", "==", sid)] : [];
+  const { rows: items } = useCollection<EnglishItem>(student ? sp(schoolId, "englishItems") : null, itemCons, [schoolId, sid, student?.year, scope.program]);
+  const entries = [
+    ...(rows ?? []).map((r) => ({ at: recordTime(r.createdAt), sub: r, item: null })),
+    ...englishGroups(items).map((g) => ({ at: g.at, sub: null, item: g })),
+  ].sort((a, b) => b.at - a.at);
   async function saveNote(text: string) {
     setBusy(true);
     try {
@@ -64,7 +75,7 @@ export function StudentDetail() {
   return (
     <div className="page">
       <Lightbox url={zoom} onClose={() => setZoom(null)} />
-      <PageHeader back="/" title={`${student.grade}-${student.classNo} ${student.number}번 ${student.name || "(이름 입력 전)"}`} right={<><span className="small muted">{student.email || "계정 없음"}</span>{canRename && <button className="btn ghost sm" onClick={rename}>이름 고치기</button>}</>} />
+      <PageHeader back="/" title={`${student.grade}-${student.classNo} ${student.number}번 ${student.name || "(이름 입력 전)"}`} right={<><span className="small muted">{student.email || "계정 없음"}</span>{canRename && <button className="btn ghost sm" onClick={rename}>이름 고치기</button>}{canRename && <button className="btn ghost sm danger-text" onClick={async () => { if (await deleteStudentFlow(schoolId, { ...student, sid })) nav("/"); }}>학생 삭제</button>}</>} />
       <div className="grid grid-3">
         {activePrograms(config, student.grade).map((x) => <ProgramCard key={x.id} program={x} progress={p[x.id] ?? { count: 0, medal: "none", thresholds: thresholdsFor(config, x, student.grade)! }} />)}
       </div>
@@ -89,9 +100,9 @@ export function StudentDetail() {
           </>
         )}
       </div>
-      <div className="section-title">기록 ({rows?.length ?? 0})</div>
+      <div className="section-title">기록 ({entries.length})</div>
       <div className="stack">
-        {(rows ?? []).map((r) => (
+        {entries.map(({ sub: r, item }) => item ? <EnglishGroupCard key={item.key} group={item} config={config} /> : r && (
           <div key={r.id} className={`card flat sub-card ${r.status === "deleted" ? "deleted" : ""}`}>
             {r.photoPath ? <StorageImage path={r.photoPath} onOpen={setZoom} /> : <div className="thumb"><PixelIcon name={r.audioPath ? "mic" : programById(config, r.program)?.icon ?? "star"} size={32} /></div>}
             <div className="stack" style={{ gap: 3 }}>

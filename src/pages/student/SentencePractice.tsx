@@ -237,9 +237,9 @@ export function SentencePractice({ student, program, task: taskDef, no }: { stud
                     {stt.ratio >= 0.8 ? " · GOOD!" : " · 천천히 또박또박 다시 해 볼까?"}
                   </div>
                 )}
-                <div className="row">
-                  <button className="btn ghost" onClick={rec.reset}>다시 녹음</button>
+                <div className="action-col">
                   <button className="btn ok big" disabled={saving || rec.recording.durationMs < 1000} onClick={saveRound}>{saving ? "저장 중…" : `${rounds + 1}회차 완료!`}</button>
+                  <button className="btn ghost" onClick={rec.reset}>다시 녹음</button>
                 </div>
               </>
             )}
@@ -250,7 +250,7 @@ export function SentencePractice({ student, program, task: taskDef, no }: { stud
             {status === "ready" ? (
               <>
                 <b>{ROUNDS_REQUIRED}번 연습 완료! 이제 선생님께 검사를 받아요.</b>
-                <div className="row">
+                <div className="action-col">
                   <button className="btn big ok" onClick={requestCheck}><PixelIcon name="hand" size={20} /> 검사 요청하기</button>
                   {nextNo && <button className="btn secondary" onClick={() => nav(`${base}/${nextNo}`)}>다음 문장</button>}
                 </div>
@@ -258,7 +258,7 @@ export function SentencePractice({ student, program, task: taskDef, no }: { stud
             ) : (
               <>
                 <b>{rounds}회차 완료! {ROUNDS_REQUIRED - rounds}번 더 연습하면 검사받을 수 있어요.</b>
-                <div className="row">
+                <div className="action-col">
                   <button className="btn big" onClick={again}>한 번 더 연습</button>
                   {nextNo && <button className="btn secondary" onClick={() => nav(`${base}/${nextNo}`)}>다음 문장</button>}
                 </div>

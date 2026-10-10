@@ -45,6 +45,10 @@
   color: var(--ink);
   background: var(--bg);
   -webkit-text-size-adjust: 100%;
+  color-scheme: only light; /* 브라우저 강제 다크모드 끄기 */
+  /* 한글은 낱말 단위로 줄바꿈 ("로그아/웃"처럼 글자 중간에서 끊기지 않게) */
+  word-break: keep-all;
+  overflow-wrap: anywhere;
 }
 
 * { box-sizing: border-box; }
@@ -62,12 +66,13 @@ a { color: var(--navy); }
   box-shadow: 0 2px 8px rgba(0,0,0,.12);
 }
 .app-header img { width: 34px; height: 34px; background: #fff; border-radius: 50%; padding: 2px; }
-.app-header .title { font-family: var(--font-title); font-weight: 700; font-size: 1.2rem; line-height: 1.1; }
+.app-header .title { font-family: var(--font-title); font-weight: 700; font-size: 1.2rem; line-height: 1.1; min-width: 0; }
 .app-header .title small { font-family: var(--font-body); }
 .app-header .title small { display: block; font-weight: 500; font-size: .72rem; opacity: .8; }
 .app-header .spacer { flex: 1; }
 .app-header .who { font-size: .85rem; opacity: .9; text-align: right; }
-.app-header button { background: rgba(255,255,255,.15); border: 0; color: #fff; border-radius: 10px; padding: 6px 10px; cursor: pointer; }
+.app-header button { background: rgba(255,255,255,.15); border: 0; color: #fff; border-radius: 10px; padding: 6px 10px; cursor: pointer; flex: none; white-space: nowrap; }
+.app-header img, .app-header .logo-fallback { flex: none; }
 
 .nav-tabs { display: flex; gap: 2px; overflow-x: auto; padding: 6px 16px 0; background: var(--card); border-bottom: 1px solid var(--line); position: sticky; top: 54px; z-index: 15; }
 .nav-tabs a, .nav-tabs button { display: inline-flex; align-items: center; gap: 6px; white-space: nowrap; padding: 10px 14px; text-decoration: none; color: var(--ink-2); font-weight: 700; border: 0; border-bottom: 3px solid transparent; background: none; cursor: pointer; }
@@ -417,3 +422,35 @@ mark.hl { background: #fee761; color: inherit; padding: 0 1px; border-radius: 3p
 .icon-grid.labeled { grid-template-columns: repeat(auto-fill, minmax(64px, 1fr)); padding: 6px; }
 .icon-grid.labeled .icon-choice { height: auto; padding: 6px 2px; gap: 2px; }
 .icon-grid.labeled .icon-choice span { font-size: 0.72rem; line-height: 1.2; color: var(--ink-2); text-align: center; word-break: keep-all; }
+.btn.ghost.danger-text { color: var(--red); border-color: #f1c4cb; }
+
+/* ── 폰 화면 정돈 ─────────────────────────── */
+/* 주 버튼 + 보조 버튼 묶음: 가운데, 같은 폭으로 세로 배치 (주 버튼이 위) */
+.action-col { display: flex; flex-direction: column; align-items: stretch; gap: 10px; width: 100%; max-width: 360px; margin: 0 auto; }
+.action-col > .btn { width: 100%; }
+
+@media (max-width: 640px) {
+  /* 헤더: 제목은 한 줄 (넘치면 …), 버튼은 작게 */
+  .app-header { gap: 8px; }
+  .app-header .title { font-size: 1rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; flex: 1 1 auto; }
+  .app-header .title small { overflow: hidden; text-overflow: ellipsis; }
+  .app-header .spacer { display: none; }
+  .app-header button { padding: 6px 9px; font-size: .78rem; }
+  /* 단계 지도: 좁은 화면에서 은·금 표시가 겹치지 않게 STAGE 글자는 숨기고 기준만 */
+  .stage-map { margin-bottom: 58px; }
+  .stage-node .tiny-hud { display: none; }
+  .stage-node .tiny { font-size: .62rem; }
+  /* 표 → 카드: 좁은 화면에서 가로로 잘리지 않게 한 사람씩 세로로 */
+  table.table.stack-sm thead { display: none; }
+  table.table.stack-sm, table.table.stack-sm tbody, table.table.stack-sm tr, table.table.stack-sm td { display: block; width: 100%; }
+  table.table.stack-sm tr { padding: 10px 12px; border-bottom: 1px solid var(--line); }
+  table.table.stack-sm tr:last-child { border-bottom: 0; }
+  table.table.stack-sm td { border: 0; padding: 2px 0; white-space: normal; }
+  table.table.stack-sm td.num { display: inline-block; width: auto; margin-right: 8px; }
+  table.table.stack-sm td.num::after { content: "번"; }
+  table.table.stack-sm td.num + td { display: inline-block; width: auto; }
+  table.table.stack-sm td[data-label]::before { content: attr(data-label) " · "; color: var(--ink-3); font-size: .78rem; }
+  table.table.stack-sm td .row { flex-wrap: wrap !important; margin-top: 6px; }
+}
+.app-header button { display: inline-flex; align-items: center; gap: 4px; }
+@media (max-width: 640px) { .app-header .hdr-lbl { display: none; } }

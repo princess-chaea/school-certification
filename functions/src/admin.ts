@@ -340,3 +340,45 @@ export const deleteProgramData = onCall({ region: REGION, timeoutSeconds: 540, m
   logger.info("program data deleted", { schoolId, programId, submissions, englishItems });
   return { submissions, englishItems };
 });
+
+/** 학생 완전 삭제 (테스트 계정·잘못 등록한 학생): 학교 담당자 또는 그 반 담임 — 기록·녹음·사진까지 모두 지움 */
+export const deleteStudent = onCall({ region: REGION, timeoutSeconds: 300, memory: "512MiB" }, async (req) => {
+  const schoolId = requireSchoolId(req.data);
+  const me = await requireStaff(req, schoolId);
+  const sid = String((req.data as { sid?: string })?.sid ?? "");
+  if (!sid || sid.includes("/")) throw new HttpsError("invalid-argument", "학생을 선택하세요.");
+  const ref = db.doc(sp(schoolId, `students/${sid}`));
+  const snap = await ref.get();
+  if (!snap.exists) throw new HttpsError("not-found", "이미 삭제된 학생이에요.");
+  const s = snap.data() as { grade?: number; classNo?: number; uid?: string };
+  const isHomeroom = me.homeroom === true && me.grade === s.grade && me.classNo === s.classNo;
+  if (me.role !== "admin" && !isHomeroom) throw new HttpsError("permission-denied", "학교 담당자나 이 반 담임 선생님만 삭제할 수 있어요.");
+  const bucket = getStorage().bucket();
+  let submissions = 0;
+  let englishItems = 0;
+  for (;;) {
+    const q = await db.collection(sp(schoolId, "submissions")).where("sid", "==", sid).limit(300).get();
+    if (q.empty) break;
+    const batch = db.batch();
+    q.docs.forEach((d) => {
+      batch.delete(d.ref);
+      batch.delete(db.doc(sp(schoolId, `aiReviews/${d.id}`)));
+    });
+    await batch.commit();
+    submissions += q.size;
+  }
+  for (;;) {
+    const q = await db.collection(sp(schoolId, "englishItems")).where("sid", "==", sid).limit(300).get();
+    if (q.empty) break;
+    const batch = db.batch();
+    q.docs.forEach((d) => batch.delete(d.ref));
+    await batch.commit();
+    englishItems += q.size;
+  }
+  // 사진·녹음·파일은 모두 uploads/{sid}/ 아래에 있음
+  await bucket.deleteFiles({ prefix: `schools/${schoolId}/uploads/${sid}/` }).catch((e) => logger.warn("upload cleanup failed", { sid, e: String(e) }));
+  if (s.uid) await db.doc(`users/${s.uid}`).delete();
+  await ref.delete();
+  logger.info("student deleted", { schoolId, sid, by: me.uid, submissions, englishItems });
+  return { submissions, englishItems };
+});

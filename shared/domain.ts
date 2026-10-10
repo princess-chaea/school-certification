@@ -64,7 +64,7 @@ export interface AppConfig {
   medalMultipliers: { bronze: number; silver: number; gold: number };
   programs: ProgramDef[];
   ai: { enabled: boolean; photoModel: string; teacherModel: string; dailyLimit: number }; // 교사 업무 보조 전용 (학생에게 제공하지 않음)
-  certificate: { title: string; issueDate: string; body: string; showSealOnWeb: boolean };
+  certificate: { title: string; issueDate: string; body: string; showSealOnWeb: boolean; sealSizeMm: number };
 }
 
 const ALL = [1, 2, 3, 4, 5, 6];
@@ -110,6 +110,7 @@ export const DEFAULT_CONFIG: AppConfig = {
     issueDate: "2026년 12월 0일",
     body: "위 학생은 「2026 도전! 꿈 성취 학교장 인증제」에 참가하여 위 분야에서 인증받았기에 이 증서를 드립니다.",
     showSealOnWeb: true,
+    sealSizeMm: 24, // 직인 크기: 학교장 이름 마지막 글자에 겹쳐 찍힘
   },
 };
 

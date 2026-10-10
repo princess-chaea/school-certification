@@ -33,7 +33,7 @@ export const DEFAULT_SCHOOL: SchoolInfo = {
   studentDomain: "haju.es.kr",
   year: 2026,
   logoUrl: "/logo.png",
-  sealUrl: "/cert/seal.jpg",
+  sealUrl: "", // 직인은 학교 담당자가 [설정]에서 등록
 };
 
 /** 하주초등학교 → 하주초, 경산중학교 → 경산중, 구미고등학교 → 구미고 */

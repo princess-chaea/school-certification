@@ -4,14 +4,21 @@ import { principalTitle } from "../../shared/school";
 import type { StudentDoc } from "../lib/types";
 import { useSchool } from "../lib/school";
 
-/** 학교 한글 양식(학교장 인증서.hwpx)과 같은 배치의 웹 인증서 */
-export function HwpxCertificate({ config, program, student }: { config: AppConfig; program: ProgramId; student: Pick<StudentDoc, "grade" | "classNo" | "name"> }) {
+/**
+ * 학교 한글 양식(학교장 인증서.hwpx)과 같은 배치의 웹 인증서
+ * plain: 테두리 없는 판(상장 용지 인쇄용) · seal: 직인 표시 (학교장 이름 마지막 글자에 겹쳐 찍음)
+ */
+export function HwpxCertificate({ config, program, student, plain, seal }: { config: AppConfig; program: ProgramId; student: Pick<StudentDoc, "grade" | "classNo" | "name">; plain?: boolean; seal?: boolean }) {
   const school = useSchool();
   const c = config.certificate;
   const [y, m, d] = issueDateParts(c.issueDate);
+  const title = principalTitle(school);
+  const chars = [...title];
+  const last = chars.pop() ?? "";
+  const showSeal = (seal ?? c.showSealOnWeb) && Boolean(school.sealUrl);
   return (
-    <div className="hwpx-cert">
-      <img className="frame" src="/cert/frame.png" alt="" />
+    <div className={`hwpx-cert ${plain ? "plain" : ""}`}>
+      {!plain && <img className="frame" src="/cert/frame.png" alt="" />}
       <div className="inner">
         <div className="t">학교장&nbsp;&nbsp;인증서</div>
         <div className="meta">
@@ -31,8 +38,11 @@ export function HwpxCertificate({ config, program, student }: { config: AppConfi
         <div className="body">&nbsp;&nbsp;{c.body}</div>
         <div className="date">{y}년 {m}월 {d}일</div>
         <div className="principal">
-          {principalTitle(school)}
-          {c.showSealOnWeb && school.sealUrl && <img className="seal" src={school.sealUrl} alt="" />}
+          {chars.join("")}
+          <span className="seal-anchor">
+            {last}
+            {showSeal && <img className="seal" src={school.sealUrl} alt="" style={{ width: `${((c.sealSizeMm || 24) / 210) * 100}cqw` }} />}
+          </span>
         </div>
       </div>
     </div>

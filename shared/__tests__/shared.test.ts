@@ -161,37 +161,57 @@ describe("roster csv", () => {
 
 import { readFileSync, writeFileSync, mkdirSync } from "node:fs";
 import { unzipSync, strFromU8 } from "fflate";
-import { buildCertificatesHwpx } from "../hwpx";
+import { buildCertificatesHwpx, imageSize } from "../hwpx";
 describe("hwpx certificates", () => {
   const template = new Uint8Array(readFileSync(new URL("../../public/cert/template.hwpx", import.meta.url)));
+  const plain = new Uint8Array(readFileSync(new URL("../../public/cert/template-plain.hwpx", import.meta.url)));
+  const opt = { date: ["2026", "12", "18"] as [string, string, string], year: 2026, schoolName: "하주초등학교", principalTitle: "하주초등학교장 문석주" };
   it("fills placeholders and repeats pages", () => {
     const out = buildCertificatesHwpx(template, [
       { field: "도전! 독서 마라톤", grade: 4, classNo: 1, name: "김하주" },
       { field: "탄소중립! 환경 지킴이", grade: 5, classNo: 2, name: "이<특수>" },
-    ], { date: ["2026", "12", "18"], year: 2026 });
+    ], opt);
     const files = unzipSync(out);
     expect(Object.keys(files)[0]).toBe("mimetype");
     const xml = strFromU8(files["Contents/section0.xml"]);
     expect(xml).toContain("<hp:t>김하주</hp:t>");
     expect(xml).toContain("<hp:t>이&lt;특수&gt;</hp:t>");
+    expect(xml).toContain("<hp:t>하주초등학교</hp:t>");
     expect(xml).toContain("<hp:t>4학년 1반</hp:t>");
     expect(xml).toContain("<hp:t>5학년 2반</hp:t>");
     expect(xml).toContain("<hp:t>2026년 12월 18일</hp:t>");
-    expect(xml).not.toContain("{}");
-    expect(xml).not.toContain("홍길동");
+    expect(xml).toContain("<hp:t>하주초등학교장 문석주</hp:t>");
+    expect(xml).not.toMatch(/\{[^}]*\}/);
+    expect(xml).not.toContain("schoolseal");
     expect((xml.match(/<hp:secPr\b/g) ?? []).length).toBe(1);
     expect((xml.match(/pageBreak="1"/g) ?? []).length).toBeGreaterThanOrEqual(1);
     const picIds = [...xml.matchAll(/<hp:pic\b[^>]*?\bid="(\d+)"/g)].map((m) => m[1]);
     expect(new Set(picIds).size).toBe(picIds.length);
-    mkdirSync(new URL("../../.claude-tmp/", import.meta.url), { recursive: true });
-    writeFileSync(new URL("../../.claude-tmp/test-certs.hwpx", import.meta.url), out);
   });
-  it("replaces school and removes seal", () => {
-    const out = buildCertificatesHwpx(template, [{ field: "A", grade: 3, classNo: 1, name: "가" }], { date: ["2027", "2", "1"], schoolName: "경산초등학교", principalTitle: "경산초등학교장 홍길동", year: 2027, seal: null });
-    const xml = strFromU8(unzipSync(out)["Contents/section0.xml"]);
-    expect(xml).toContain("<hp:t>경산초등학교</hp:t>");
+  it("borderless template + seal over the last character of the principal name", () => {
+    // 1x1 PNG 머리만 있으면 크기를 읽을 수 있음 (가로 200, 세로 200)
+    const png = new Uint8Array(33);
+    png.set([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0, 0, 0, 13, 0x49, 0x48, 0x44, 0x52, 0, 0, 0, 200, 0, 0, 0, 200]);
+    expect(imageSize(png)).toEqual({ w: 200, h: 200 });
+    const out = buildCertificatesHwpx(plain, [{ field: "A", grade: 3, classNo: 1, name: "가" }, { field: "B", grade: 3, classNo: 2, name: "나" }],
+      { ...opt, date: ["2027", "2", "1"], schoolName: "경산초등학교", principalTitle: "경산초등학교장 홍길동", year: 2027, seal: { data: png, type: "image/png" } });
+    const files = unzipSync(out);
+    const xml = strFromU8(files["Contents/section0.xml"]);
+    expect(files["BinData/schoolseal.png"]).toBeTruthy();
+    expect(strFromU8(files["Contents/content.hpf"])).toContain('id="schoolseal" href="BinData/schoolseal.png" media-type="image/png"');
+    expect(xml).not.toContain("image1");
     expect(xml).toContain("<hp:t>경산초등학교장 홍길동</hp:t>");
     expect(xml).toContain("「2027 도전!");
-    expect(xml).not.toContain('binaryItemIDRef="image2"');
+    expect((xml.match(/binaryItemIDRef="schoolseal"/g) ?? []).length).toBe(2);
+    // 직인 가운데 ≈ 마지막 글자(동) 가운데: 글자 폭 2295, 가운데 정렬, 본문 폭 46604
+    const m = /horzOffset="(\d+)"[^>]*\/>\s*<hp:outMargin[^>]*\/><hp:shapeComment>학교 직인/.exec(xml);
+    const x = Number(m?.[1]);
+    const textW = 10 * 2295 + 945;
+    const lastCenter = (46604 - textW) / 2 + textW - 2295 / 2;
+    expect(Math.abs(x + (24 * 283.465) / 2 - lastCenter)).toBeLessThan(5);
+    const picIds = [...xml.matchAll(/<hp:pic\b[^>]*?\bid="(\d+)"/g)].map((m) => m[1]);
+    expect(new Set(picIds).size).toBe(picIds.length);
+    mkdirSync(new URL("../../.claude-tmp/", import.meta.url), { recursive: true });
+    writeFileSync(new URL("../../.claude-tmp/test-certs-plain.hwpx", import.meta.url), out);
   });
 });

@@ -36,7 +36,7 @@ printf '%s' "$NEIS_API_KEY"      | firebase functions:secrets:set NEIS_API_KEY -
 npm run build
 firebase deploy --only firestore,storage,functions,hosting --project school-certification-e1a6c
 
-# 직인 이미지(학교별 업로드)를 인증서 한글 출력에 쓰기 위한 CORS
+# 직인 이미지(학교 담당자가 업로드)를 인증서 한글 출력에 넣기 위한 CORS
 gsutil cors set storage.cors.json gs://school-certification-e1a6c.firebasestorage.app
 ```
 
@@ -44,11 +44,16 @@ gsutil cors set storage.cors.json gs://school-certification-e1a6c.firebasestorag
 
 1. 배포 주소(`https://school-certification-e1a6c.web.app`)에서 **운영자 계정**(dltjdrms320@gmail.com 등)으로 로그인
 2. `node scripts/set-super-admin.mjs <운영자 이메일>` → 운영자 지정
-3. 같은 계정으로 [선생님 가입·학교 개설] → NEIS에서 "하주초등학교" 검색 → 개설 신청
-4. 상단 [운영자] → 개설 신청 승인 → 신청자가 하주초 **관리자**가 됨
-5. 관리자 → [설정]: 교표·직인 업로드, 학교장 성함 입력 / [설정 → 데이터 도구] 영어 문장 세트 올리기
-6. 관리자 → [구성원 → 학생 명단 CSV]: 양식 내려받아 명단 업로드
-7. 선생님들 가입 → [구성원]에서 승인
+3. 같은 계정으로 오른쪽 위 [선생님 가입] → NEIS에서 "하주초등학교" 검색 → 역할 체크(학교 담당자·담임·전담 중복 가능) → 바로 학교가 만들어지고 **학교 담당자**가 됨
+4. 학교 담당자 → [설정]: 교표·**직인(배경 투명 PNG 권장)** 등록, 학교장 성함 입력, 직인 크기 조절 / [설정 → 데이터 도구] 영어 문장 세트 올리기
+   - 직인은 양식에 들어 있지 않고, 등록한 직인이 인증서의 학교장 이름 마지막 글자에 겹쳐 찍힌다(웹·한글 모두)
+5. 학교 담당자 → [구성원 → 학생 명단 CSV]: 양식 내려받아 명단 업로드
+6. 선생님들 가입: 지금은 가입 즉시 사용(승인 없음). 실제 학생 데이터를 운영할 때는 [설정 → 교사·담당자 가입 방식]을 **학교 담당자 승인 후 사용**으로 바꾸는 것을 권장
+7. [인증서]에서 양식 선택: **테두리 있음**(학교장 인증서.hwpx) / **테두리 없음**(학교장 인증서(테두리X).hwpx, 학교 상장 용지 인쇄용), 직인 넣기 선택
+
+### 참고
+- AI 결과(사진·글 1차 확인)는 `schools/{id}/aiReviews`에 저장되고 교사·담당자만 읽을 수 있다. 학생 화면에는 AI 결과를 보여 주지 않는다.
+- 학교 담당자의 [인증 항목 → 기능 요청]은 `featureRequests`에 쌓이고, 시스템 관리자가 상단 [시스템]에서 확인한다.
 
 ## 4. 로컬 테스트 (에뮬레이터)
 

@@ -12,6 +12,7 @@ import { isCertified, MEDAL_LABEL, activePrograms, programById } from "../../../
 import { PixelIcon } from "../../components/Pixel";
 import { principalTitle } from "../../../shared/school";
 import { GRADES } from "../../lib/classes";
+import type { SealImage } from "../../../shared/hwpx";
 
 
 function save(name: string, data: BlobPart, type: string) {
@@ -19,7 +20,9 @@ function save(name: string, data: BlobPart, type: string) {
   const a = document.createElement("a");
   a.href = url;
   a.download = name;
+  document.body.appendChild(a);
   a.click();
+  a.remove();
   setTimeout(() => URL.revokeObjectURL(url), 2000);
 }
 
@@ -35,6 +38,8 @@ export function Certificates() {
   const [includeDemo, setIncludeDemo] = useState(false);
   const [busy, setBusy] = useState(false);
   const [printing, setPrinting] = useState(false);
+  const [plain, setPlain] = useState(false); // 테두리 없는 판: 학교 상장 용지에 인쇄
+  const [withSeal, setWithSeal] = useState(true);
 
   const list = useMemo(() => {
     const out: Array<{ s: StudentDoc & { id: string }; p: string }> = [];
@@ -50,18 +55,20 @@ export function Certificates() {
   async function hwpx() {
     setBusy(true);
     try {
-      const [{ buildCertificatesHwpx }, template] = await Promise.all([import("../../../shared/hwpx"), fetch("/cert/template.hwpx").then((r) => r.arrayBuffer())]);
-      let seal: Uint8Array | null | undefined = undefined;
-      if (school.sealUrl && school.sealUrl !== "/cert/seal.jpg") {
-        seal = await fetch(school.sealUrl).then((r) => r.arrayBuffer()).then((b) => new Uint8Array(b)).catch(() => null);
+      const [{ buildCertificatesHwpx }, template] = await Promise.all([import("../../../shared/hwpx"), fetch(plain ? "/cert/template-plain.hwpx" : "/cert/template.hwpx").then((r) => r.arrayBuffer())]);
+      let seal: SealImage | null = null;
+      if (withSeal && school.sealUrl) {
+        seal = await fetch(school.sealUrl)
+          .then(async (r) => ({ data: new Uint8Array(await r.arrayBuffer()), type: (r.headers.get("content-type")?.includes("png") ? "image/png" : "image/jpeg") as SealImage["type"] }))
+          .catch(() => null);
         if (!seal) toast("직인 이미지를 불러오지 못해 직인 없이 만들어요.");
-      } else if (!school.sealUrl) seal = null;
+      }
       const out = buildCertificatesHwpx(
         new Uint8Array(template),
         list.map(({ s, p }) => ({ field: programById(config, p)?.name ?? p, grade: s.grade, classNo: s.classNo, name: s.name })),
-        { date: issueDateParts(config.certificate.issueDate), schoolName: school.name, principalTitle: principalTitle(school), year: school.year, seal },
+        { date: issueDateParts(config.certificate.issueDate), schoolName: school.name, principalTitle: principalTitle(school), year: school.year, seal, sealSizeMm: config.certificate.sealSizeMm },
       );
-      save(`${school.shortName}_학교장인증서_${program === "all" ? "전체" : programById(config, program)?.name ?? program}_${list.length}명.hwpx`, out as BlobPart, "application/hwp+zip");
+      save(`${school.shortName}_학교장인증서${plain ? "(테두리X)" : ""}_${program === "all" ? "전체" : programById(config, program)?.name ?? program}_${list.length}명.hwpx`, out as BlobPart, "application/hwp+zip");
     } catch (e) {
       toast("만들지 못했어요: " + (e as Error).message);
     } finally {
@@ -87,11 +94,26 @@ export function Certificates() {
       <div className="card stack no-print">
         <div className="small muted">분야별로 <b>동(계획서 인증 기준) 이상</b>을 달성한 학생이에요. 수여 날짜·학교장·직인은 [설정]에서 바꿀 수 있어요. (현재 수여일: {config.certificate.issueDate})</div>
         <div className="row">
+          <span className="small" style={{ fontWeight: 700 }}>양식</span>
+          <button className={`choice ${!plain ? "on" : ""}`} onClick={() => setPlain(false)}>테두리 있음</button>
+          <button className={`choice ${plain ? "on" : ""}`} onClick={() => setPlain(true)}>테두리 없음 (상장 용지 인쇄용)</button>
+          <label className="row small" style={{ gap: 4 }}>
+            <input type="checkbox" checked={withSeal && Boolean(school.sealUrl)} disabled={!school.sealUrl} onChange={(e) => setWithSeal(e.target.checked)} /> 직인 넣기
+            {!school.sealUrl && <span className="tiny">(직인 미등록: [설정]에서 등록)</span>}
+          </label>
+        </div>
+        <div className="row">
           <button className="btn" disabled={!list.length || busy} onClick={hwpx}><PixelIcon name="file" size={16} /> {busy ? "만드는 중…" : `한글(hwpx) 인증서 ${list.length}장 한 파일로`}</button>
           <button className="btn secondary" disabled={!list.length} onClick={csv}><PixelIcon name="download" size={16} /> 메일 머지용 명단(CSV)</button>
           <button className="btn ghost" disabled={!list.length} onClick={() => { setPrinting(true); setTimeout(() => window.print(), 400); }}>웹 인증서 인쇄</button>
         </div>
       </div>
+      {list[0] && (
+        <div className="cert-preview no-print">
+          <div className="tiny">미리보기 · 첫 번째 학생</div>
+          <HwpxCertificate config={config} program={list[0].p} student={list[0].s} plain={plain} seal={withSeal} />
+        </div>
+      )}
       {rows === null ? <div className="muted">불러오는 중…</div> : list.length === 0 ? <Empty>아직 인증(동 이상)을 달성한 학생이 없어요.</Empty> : (
         <div className="table-wrap no-print" style={{ marginTop: 14 }}>
           <table className="table">
@@ -102,7 +124,7 @@ export function Certificates() {
       )}
       {printing && (
         <div className="print-only">
-          {list.map(({ s, p }) => <div key={s.id + p} className="print-page"><HwpxCertificate config={config} program={p} student={s} /></div>)}
+          {list.map(({ s, p }) => <div key={s.id + p} className="print-page"><HwpxCertificate config={config} program={p} student={s} plain={plain} seal={withSeal} /></div>)}
           <button className="btn no-print" onClick={() => setPrinting(false)}>인쇄 미리보기 닫기</button>
         </div>
       )}

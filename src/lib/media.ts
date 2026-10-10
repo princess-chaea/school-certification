@@ -2,7 +2,7 @@ import { ref, uploadBytes, getDownloadURL } from "firebase/storage";
 import { storage } from "../firebase";
 
 /** 태블릿 사진을 긴 변 1280px JPEG 로 줄인다 (저장 공간·AI 비용 절약) */
-export async function resizeImage(file: File, maxSide = 1280, quality = 0.82): Promise<Blob> {
+export async function resizeImage(file: File, maxSide = 1280, quality = 0.82, type: "image/jpeg" | "image/png" = "image/jpeg"): Promise<Blob> {
   const bitmap = await createImageBitmap(file).catch(() => null);
   const source: CanvasImageSource & { width: number; height: number } =
     bitmap ??
@@ -19,7 +19,7 @@ export async function resizeImage(file: File, maxSide = 1280, quality = 0.82): P
   canvas.width = w;
   canvas.height = h;
   canvas.getContext("2d")!.drawImage(source, 0, 0, w, h);
-  return new Promise((resolve, reject) => canvas.toBlob((b) => (b ? resolve(b) : reject(new Error("이미지 변환 실패"))), "image/jpeg", quality));
+  return new Promise((resolve, reject) => canvas.toBlob((b) => (b ? resolve(b) : reject(new Error("이미지 변환 실패"))), type, quality));
 }
 
 /** 같은 사진을 다시 올리는지 확인하기 위한 지문 (8x8 평균 해시) */

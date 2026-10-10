@@ -257,8 +257,12 @@ table.table td.num { text-align: right; font-variant-numeric: tabular-nums; }
 .hwpx-cert .body { font-size: 4.3cqw; line-height: 1.9; text-align: left; word-break: keep-all; margin-top: 12%; }
 .hwpx-cert .date { text-align: center; font-size: 3.7cqw; margin-top: 9%; }
 .hwpx-cert .principal { position: relative; text-align: center; font-size: 5cqw; font-weight: 800; margin-top: 9%; }
-.hwpx-cert .seal { position: absolute; width: 13cqw; right: 6%; top: -40%; mix-blend-mode: multiply; }
-@media print { .hwpx-cert { width: 190mm; box-shadow: none; } }
+.cert-preview { margin-top: 14px; display: grid; gap: 6px; justify-items: center; }
+.cert-preview .hwpx-cert { width: min(100%, 340px); }
+.hwpx-cert .seal-anchor { position: relative; display: inline-block; }
+.hwpx-cert .seal { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); max-width: none; mix-blend-mode: multiply; pointer-events: none; }
+.hwpx-cert.plain { box-shadow: var(--shadow); outline: 1px dashed var(--line); }
+@media print { .hwpx-cert { width: 190mm; box-shadow: none; } .hwpx-cert.plain { outline: none; } }
 
 /* ── 제출 화면 ── */
 .submit-card { display: grid; grid-template-columns: 220px 1fr; gap: 16px; align-items: start; }

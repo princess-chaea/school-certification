@@ -10,6 +10,7 @@ import { resizeImage } from "../../lib/media";
 import { PageHeader } from "../../components/Layout";
 import { toast } from "../../components/ui";
 import { PixelIcon, PixelMedal } from "../../components/Pixel";
+import { HwpxCertificate } from "../../components/HwpxCertificate";
 import { type AppConfig } from "../../../shared/domain";
 import { classesOf, GRADES } from "../../lib/classes";
 
@@ -58,9 +59,11 @@ export function Settings() {
   async function uploadAsset(kind: "logo" | "seal", f?: File) {
     if (!f) return;
     await run(kind, async () => {
-      const blob = await resizeImage(f, kind === "logo" ? 512 : 300, 0.92);
-      const r = ref(storage, `schools/${schoolId}/assets/${kind}-${Date.now()}.jpg`);
-      await uploadBytes(r, blob, { contentType: "image/jpeg" });
+      // 직인은 투명 배경이 살아 있도록 PNG로 (학교장 이름 위에 겹쳐 찍힘)
+      const type = kind === "seal" ? "image/png" : "image/jpeg";
+      const blob = await resizeImage(f, kind === "logo" ? 512 : 600, 0.92, type);
+      const r = ref(storage, `schools/${schoolId}/assets/${kind}-${Date.now()}.${kind === "seal" ? "png" : "jpg"}`);
+      await uploadBytes(r, blob, { contentType: type });
       const url = await getDownloadURL(r);
       await updateDoc(doc(db, sp(schoolId)), { [kind === "logo" ? "logoUrl" : "sealUrl"]: url, updatedAt: serverTimestamp() });
       return kind === "logo" ? "교표를 바꿨어요." : "직인을 바꿨어요.";
@@ -91,10 +94,12 @@ export function Settings() {
           <input className="input" value={principal} onChange={(e) => setPrincipal(e.target.value)} placeholder="문석주" />
         </label>
         <div className="row">
-          {school.sealUrl ? <img src={school.sealUrl} alt="직인" style={{ width: 56, height: 56, objectFit: "contain" }} /> : <span className="small muted">직인 없음</span>}
-          <button className="btn secondary sm" disabled={busy === "seal"} onClick={() => sealRef.current?.click()}>직인 이미지 바꾸기</button>
-          <input ref={sealRef} type="file" accept="image/*" hidden onChange={(e) => uploadAsset("seal", e.target.files?.[0])} />
+          {school.sealUrl ? <img src={school.sealUrl} alt="직인" style={{ width: 56, height: 56, objectFit: "contain" }} /> : <span className="chip gray">직인 미등록</span>}
+          <button className="btn secondary sm" disabled={busy === "seal"} onClick={() => sealRef.current?.click()}>{school.sealUrl ? "직인 바꾸기" : "직인 등록"}</button>
+          {school.sealUrl && <button className="btn ghost sm" disabled={busy === "seal"} onClick={() => run("seal", async () => { await updateDoc(doc(db, sp(schoolId)), { sealUrl: "", updatedAt: serverTimestamp() }); return "직인을 지웠어요."; })}>직인 지우기</button>}
+          <input ref={sealRef} type="file" accept="image/png,image/jpeg" hidden onChange={(e) => uploadAsset("seal", e.target.files?.[0])} />
         </div>
+        <div className="tiny">직인은 인증서의 학교장 이름 마지막 글자에 겹쳐서 크게 찍혀요. 배경이 투명한 PNG가 가장 깔끔해요. 크기는 아래 [인증서]에서 조절해요.</div>
         <label className="field"><span>학생 계정 도메인 (선택: CSV 이메일에 @이 없을 때 붙임)</span>
           <input className="input" value={domain} onChange={(e) => setDomain(e.target.value.trim())} placeholder="haju.es.kr" />
         </label>
@@ -134,6 +139,15 @@ export function Settings() {
           <textarea className="input" value={cfg.certificate.body} onChange={(e) => setCfg({ ...cfg, certificate: { ...cfg.certificate, body: e.target.value } })} />
         </label>
         <label className="row small" style={{ gap: 6 }}><input type="checkbox" checked={cfg.certificate.showSealOnWeb} onChange={(e) => setCfg({ ...cfg, certificate: { ...cfg.certificate, showSealOnWeb: e.target.checked } })} /> 학생 화면 인증서에 직인 표시</label>
+        <label className="row small" style={{ gap: 8 }}>
+          직인 크기
+          <input type="range" min={14} max={36} step={1} value={cfg.certificate.sealSizeMm} onChange={(e) => setCfg({ ...cfg, certificate: { ...cfg.certificate, sealSizeMm: Number(e.target.value) } })} />
+          <b>{cfg.certificate.sealSizeMm}mm</b>
+        </label>
+        <div className="cert-preview">
+          <div className="tiny">미리보기 (저장 전 설정 반영)</div>
+          <HwpxCertificate config={cfg} program={cfg.programs[0]?.id ?? ""} student={{ grade: 4, classNo: 1, name: "홍길동" }} seal />
+        </div>
       </Section>
 
       <div className="submit-bar" style={{ marginBottom: 20 }}>

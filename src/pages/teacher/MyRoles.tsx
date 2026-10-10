@@ -75,7 +75,7 @@ export function MyRoles({ staff }: { staff: StaffDoc }) {
             </select>
           </div>
         </RoleBox>
-        <RoleBox icon="check" title="전담 · 인증 업무 담당" desc="고른 학년의 고른 인증 항목 기록 확인" on={subject} onToggle={() => setSubject(!subject)}>
+        <RoleBox icon="flag" title="전담 · 인증 업무 담당" desc="고른 학년의 고른 인증 항목 기록 확인" on={subject} onToggle={() => setSubject(!subject)}>
           <div className="field">
             <span className="small" style={{ fontWeight: 700 }}>담당 학년</span>
             <div className="row">

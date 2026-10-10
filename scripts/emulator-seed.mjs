@@ -25,7 +25,7 @@ await user("nobody", "someone@gmail.com", "새 선생님");
 const now = FieldValue.serverTimestamp();
 await db.doc(`schools/${SCHOOL}`).set({
   name: "하주초등학교", shortName: "하주초", principalName: "문석주", studentDomain: "haju.es.kr", year: 2026,
-  logoUrl: "/logo.png", sealUrl: "/cert/seal.jpg", status: "active", joinPolicy: "open", createdAt: now,
+  logoUrl: "/logo.png", sealUrl: "", status: "active", joinPolicy: "open", createdAt: now,
   neis: { atptCode: "R10", atptName: "경상북도교육청", schoolCode: SCHOOL, name: "하주초등학교", kind: "초등학교", region: "경상북도", jurisdiction: "경상북도경산교육지원청", address: "경상북도 (테스트 주소)" },
 });
 await db.doc("superAdmins/admin1").set({ note: "플랫폼 운영자" });

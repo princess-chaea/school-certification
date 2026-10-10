@@ -475,3 +475,8 @@ mark.hl { background: #fee761; color: inherit; padding: 0 1px; border-radius: 3p
 .pf-chip { display: inline-flex; align-items: center; gap: 5px; padding: 5px 11px 5px 7px; border: 2px solid var(--line); border-radius: 10px; background: #fff; font: inherit; font-size: .88rem; font-weight: 700; color: var(--ink-2); cursor: pointer; white-space: nowrap; }
 .pf-chip.on { border-color: #1f2240; background: var(--navy-50); color: var(--navy); box-shadow: 2px 2px 0 #1f2240; }
 .pf-picked { color: var(--navy); font-weight: 700; padding-left: 2px; }
+
+/* 영어 문장: 영상(EBSe 등) 먼저 보기 */
+.video-step { display: flex; align-items: center; gap: 12px; padding: 12px 14px; border: 3px solid #1f2240; border-radius: 10px; background: #fff7d1; box-shadow: 3px 3px 0 #1f2240; color: var(--ink); text-decoration: none; }
+.video-step > span { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.video-step:active { transform: translate(2px, 2px); box-shadow: 1px 1px 0 #1f2240; }

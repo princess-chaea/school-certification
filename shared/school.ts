@@ -10,6 +10,7 @@ export interface SchoolInfo {
   sealUrl: string; // 직인 이미지
   neis?: NeisSchool;
   joinPolicy?: "open" | "approval";
+  slogan?: string; // 화면 위쪽 큰 글씨 (학교마다 다름, 비우면 기본 "도전! 꿈 성취")
   setupAt?: unknown;
 }
 
@@ -81,4 +82,10 @@ export function neisResultMessage(json: unknown): string | null {
   const r = (json as { RESULT?: { CODE?: string; MESSAGE?: string } })?.RESULT;
   if (r?.CODE && r.CODE !== "INFO-000") return r.MESSAGE ?? r.CODE;
   return null;
+}
+
+/** 화면 위쪽 문구: 학교가 정한 문구, 없으면 기본값 */
+export const DEFAULT_SLOGAN = "도전! 꿈 성취";
+export function sloganOf(school: { slogan?: string }) {
+  return school.slogan?.trim() || DEFAULT_SLOGAN;
 }

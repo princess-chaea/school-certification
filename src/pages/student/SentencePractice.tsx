@@ -147,7 +147,7 @@ export function SentencePractice({ student, program, task: taskDef, no }: { stud
       {ding.stamp && <Stamp title="띵동!" sub={ding.stamp} onDone={ding.clear} />}
       <PageHeader
         back={base}
-        title={<>문장 #{no}</>}
+        title={<>{set.itemLabel ? `${set.itemLabel} ${no}` : `문장 #${no}`}</>}
         right={
           <>
             <button className="btn ghost sm" disabled={!prevNo} onClick={() => prevNo && nav(`${base}/${prevNo}`)}>이전</button>
@@ -166,6 +166,16 @@ export function SentencePractice({ student, program, task: taskDef, no }: { stud
         </div>
         {item?.teacherNote && status === "retry" && <div className="chip red">선생님: {item.teacherNote}</div>}
 
+        {set.videoListUrl && status !== "checked" && (
+          <a className="video-step" href={s.video ?? set.videoListUrl} target="_blank" rel="noreferrer">
+            <PixelIcon name="play" size={22} />
+            <span>
+              <span className="hud small">STEP 0 · 영상 먼저 보기</span>
+              <b>{set.videoName} {set.itemLabel ?? ""} {no}</b>
+              <span className="tiny">{s.video ? "영상을 보고 돌아와서 아래 문장을 영어로 써요." : `목록에서 ${set.itemLabel ?? ""} ${no}을(를) 눌러 영상을 봐요.`}</span>
+            </span>
+          </a>
+        )}
         <div className="practice-ko">{target.ko || "(뜻 없음)"}</div>
 
         {status === "checked" ? (

@@ -1,3 +1,4 @@
+import { sloganOf } from "../../shared/school";
 import { NavLink, useLocation, useNavigate } from "react-router-dom";
 import { useState, type ReactNode } from "react";
 import { LogoutButton } from "./Modal";
@@ -33,8 +34,8 @@ export function Layout({ who, tabs, children, extra }: { who: string; tabs: Tab[
       <header className="app-header">
         {school.logoUrl ? <img src={school.logoUrl} alt={`${school.name} 교표`} /> : <span className="logo-fallback"><PixelIcon name="school" size={22} /></span>}
         <div className="title">
-          {school.shortName} 학교장 인증제
-          <small>도전! 꿈 성취{IS_EMULATOR ? " · TEST" : ""}</small>
+          {sloganOf(school)}
+          <small>{school.shortName} 학교장 인증제{IS_EMULATOR ? " · TEST" : ""}</small>
         </div>
         <div className="spacer" />
         <div className="who">{who}</div>

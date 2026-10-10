@@ -6,6 +6,7 @@ import { loginIntent, logout, setLoginIntent, useRefreshSession } from "../lib/a
 import { CLASSES_PER_GRADE } from "../lib/classes";
 import type { StaffDoc } from "../lib/types";
 import { PixelIcon } from "../components/Pixel";
+import { LogoutButton } from "../components/Modal";
 import type { NeisSchool } from "../../shared/school";
 
 type SchoolHit = NeisSchool & { opened?: boolean };
@@ -39,7 +40,8 @@ export function TeacherSignup({ user, existing, isSuper, onSuper }: { user: User
   const [asTeacher, setAsTeacher] = useState(Boolean(existing) || isSuper || loginIntent() === "teacher");
 
   const toggle = <T,>(arr: T[], v: T) => (arr.includes(v) ? arr.filter((x) => x !== v) : [...arr, v]);
-  const subjectOk = !subject || (grades.length > 0 && programs.length > 0);
+  // 학교에 인증 항목이 아직 없으면 전담은 학년만 골라도 됨 (항목은 나중에 [내 역할]에서)
+  const subjectOk = !subject || (grades.length > 0 && (programs.length > 0 || (meta?.programs.length ?? 0) === 0));
   const valid = school && name.trim() && (admin || homeroom || subject) && subjectOk;
   const isNew = meta ? !meta.opened : !school?.opened;
 
@@ -147,7 +149,7 @@ export function TeacherSignup({ user, existing, isSuper, onSuper }: { user: User
         <h1 className="row" style={{ gap: 10 }}><PixelIcon name="users" size={30} /> 교사 등록</h1>
         <div className="page-head-right">
           {isSuper && <button className="btn sm" onClick={onSuper}><PixelIcon name="gear" size={18} /> 시스템</button>}
-          <button className="btn ghost sm" onClick={() => logout()}>로그아웃</button>
+          <LogoutButton />
         </div>
       </div>
       <p className="muted small">{user.email} · 처음 한 번만 학교와 맡은 역할을 고르면 돼요. 처음 등록하는 학교면 그 자리에서 만들어지고, 만든 선생님이 학교 담당자가 돼요.</p>
@@ -224,9 +226,9 @@ export function TeacherSignup({ user, existing, isSuper, onSuper }: { user: User
             <div className="field">
               <span className="small" style={{ fontWeight: 700 }}>담당 인증 항목</span>
               {meta === null ? (
-                <span className="tiny">불러오는 중…</span>
+                <div className="tiny" style={{ marginTop: 4 }}>불러오는 중…</div>
               ) : meta.programs.length === 0 ? (
-                <span className="tiny">아직 인증 항목이 없어요. 학교 담당자가 항목을 만든 뒤 [내 역할]에서 고를 수 있어요.</span>
+                <div className="tiny" style={{ marginTop: 4 }}>아직 인증 항목이 없어요. 학교 담당자가 항목을 만든 뒤 [내 역할]에서 고를 수 있어요.</div>
               ) : (
                 <div className="row">
                   {meta.programs.map((p) => (
@@ -320,7 +322,7 @@ export function PendingApproval({ staff, user, schoolName }: { staff: StaffDoc; 
       <div className="small muted">학교 담당자가 승인하면 이 화면이 자동으로 바뀌어요.</div>
       <div className="row" style={{ justifyContent: "center" }}>
         <button className="btn secondary" onClick={() => setEdit(true)}>가입 정보 다시 신청</button>
-        <button className="btn ghost" onClick={() => logout()}>로그아웃</button>
+        <LogoutButton className="btn ghost" />
       </div>
     </Centered>
   );

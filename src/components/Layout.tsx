@@ -1,6 +1,6 @@
 import { NavLink, useLocation, useNavigate } from "react-router-dom";
 import { useState, type ReactNode } from "react";
-import { logout } from "../lib/auth";
+import { LogoutButton } from "./Modal";
 import { IS_EMULATOR } from "../firebase";
 import { useSchool } from "../lib/school";
 import { PixelIcon } from "./Pixel";
@@ -33,7 +33,7 @@ export function Layout({ who, tabs, children, extra }: { who: string; tabs: Tab[
         <div className="spacer" />
         <div className="who">{who}</div>
         {extra}
-        <button onClick={() => logout()} aria-label="로그아웃">로그아웃</button>
+        <LogoutButton className="" />
       </header>
       {tabs.length > 1 && (
         <>

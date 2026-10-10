@@ -24,7 +24,8 @@ export function MyRoles({ staff }: { staff: StaffDoc }) {
   const [busy, setBusy] = useState(false);
   const toggle = <T,>(arr: T[], v: T) => (arr.includes(v) ? arr.filter((x) => x !== v) : [...arr, v]);
   const isAdmin = staff.role === "admin";
-  const valid = name.trim() && (isAdmin || homeroom || subject) && (!subject || (grades.length > 0 && programs.length > 0));
+  const hasPrograms = config.programs.some((p) => p.enabled);
+  const valid = name.trim() && (isAdmin || homeroom || subject) && (!subject || (grades.length > 0 && (programs.length > 0 || !hasPrograms)));
 
   async function save() {
     setBusy(true);
@@ -84,6 +85,7 @@ export function MyRoles({ staff }: { staff: StaffDoc }) {
           </div>
           <div className="field">
             <span className="small" style={{ fontWeight: 700 }}>담당 인증 항목</span>
+            {!hasPrograms && <div className="tiny" style={{ marginTop: 4 }}>아직 인증 항목이 없어요. 학교 담당자가 항목을 만들면 여기서 고를 수 있어요.</div>}
             <div className="row">
               {config.programs.filter((p) => p.enabled).map((p) => (
                 <button key={p.id} className={`choice ${programs.includes(p.id) ? "on" : ""}`} onClick={() => setPrograms(toggle(programs, p.id))}>

@@ -2,12 +2,12 @@ import { useState } from "react";
 import { doc, orderBy, updateDoc, where } from "firebase/firestore";
 import { db } from "../firebase";
 import { useCollection } from "../lib/data";
-import { logout } from "../lib/auth";
 import { fmtDateTime } from "../lib/format";
 import { Empty, toast } from "../components/ui";
 import { PixelIcon } from "../components/Pixel";
 import type { NeisSchool } from "../../shared/school";
 import type { Timestamp } from "firebase/firestore";
+import { LogoutButton } from "../components/Modal";
 
 interface SchoolRow {
   id: string;
@@ -55,7 +55,7 @@ export function SuperConsole({ onBack }: { onBack?: () => void }) {
       <div className="page-head" style={{ marginTop: 12 }}>
         {onBack && <button className="back-btn" onClick={onBack} aria-label="뒤로"><PixelIcon name="back" size={20} /></button>}
         <h1 className="row" style={{ gap: 10 }}><PixelIcon name="gear" size={30} /> 시스템 관리</h1>
-        <div className="page-head-right"><button className="btn ghost sm" onClick={() => logout()}>로그아웃</button></div>
+        <div className="page-head-right"><LogoutButton /></div>
       </div>
       <div className="row" style={{ marginBottom: 12 }}>
         <button className={`choice ${tab === "requests" ? "on" : ""}`} onClick={() => setTab("requests")}><PixelIcon name="bell" size={18} /> 기능 요청</button>

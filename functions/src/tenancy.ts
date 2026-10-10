@@ -1,9 +1,9 @@
 import { onCall, HttpsError } from "firebase-functions/v2/https";
 import { defineSecret } from "firebase-functions/params";
 import { logger } from "firebase-functions";
-import { db, REGION, FieldValue, isSuper, requireSuper, sp } from "./common.js";
+import { db, REGION, FieldValue, isSuper, loadConfig, requireSuper, sp } from "./common.js";
 import { neisResultMessage, parseNeisSchoolInfo, shortSchoolName, type NeisSchool } from "./shared/school.js";
-import { SCHOOL_YEAR } from "./shared/domain.js";
+import { DEFAULT_CONFIG, SCHOOL_YEAR } from "./shared/domain.js";
 
 // NEIS 교육정보 개방 포털 인증키 (firebase functions:secrets:set NEIS_API_KEY)
 export const NEIS_API_KEY = defineSecret("NEIS_API_KEY");
@@ -76,55 +76,91 @@ export const searchSchools = onCall({ region: REGION, secrets: [NEIS_API_KEY] },
   return { schools: schools.map((s) => ({ ...s, opened: opened.has(s.schoolCode) })), message };
 });
 
+/** 가입 화면: 고른 학교가 개설되어 있는지, 전담 담당 항목으로 고를 인증 항목 목록 */
+export const schoolPrograms = onCall({ region: REGION }, async (req) => {
+  if (!req.auth) throw new HttpsError("unauthenticated", "로그인이 필요해요.");
+  const schoolId = String((req.data as { schoolId?: string })?.schoolId ?? "");
+  if (!/^[A-Za-z0-9_-]{2,40}$/.test(schoolId)) throw new HttpsError("invalid-argument", "학교를 선택하세요.");
+  const snap = await db.doc(sp(schoolId)).get();
+  const opened = snap.exists && snap.get("status") === "active";
+  const config = opened ? await loadConfig(schoolId) : DEFAULT_CONFIG;
+  return {
+    opened,
+    joinPolicy: opened ? snap.get("joinPolicy") ?? "open" : "open",
+    programs: config.programs.filter((p) => p.enabled).map((p) => ({ id: p.id, name: p.name, icon: p.icon, grades: p.grades })),
+  };
+});
+
 interface JoinInput {
   neis: NeisSchool;
   name: string;
-  teacherType: "homeroom" | "subject";
-  grade?: number;
-  classNo?: number;
-  grades?: number[];
-  programs?: string[];
+  admin?: boolean; // 학교 담당자
+  homeroom?: { grade: number; classNo: number } | null; // 담임
+  subject?: { grades: number[]; programs: string[] } | null; // 전담
 }
 
 function staffDraft(input: JoinInput, email: string) {
   const name = String(input.name ?? "").trim().slice(0, 30);
   if (!name) throw new HttpsError("invalid-argument", "이름을 입력하세요.");
-  const programs = (input.programs ?? []).filter((p) => ["reading", "carbon", "english"].includes(p));
-  if (input.teacherType === "homeroom") {
-    const grade = Number(input.grade), classNo = Number(input.classNo);
-    if (!(grade >= 1 && grade <= 6 && classNo >= 1 && classNo <= 20)) throw new HttpsError("invalid-argument", "학년·반을 확인하세요.");
-    return { name, email, teacherType: "homeroom", grade, classNo, grades: [grade], programs: ["reading", "carbon", "english"] };
+  const out: Record<string, unknown> = { name, email, homeroom: false, grade: null, classNo: null, subject: false, grades: [], programs: [] };
+  if (input.homeroom) {
+    const grade = Number(input.homeroom.grade), classNo = Number(input.homeroom.classNo);
+    if (!(grade >= 1 && grade <= 6 && classNo >= 1 && classNo <= 20)) throw new HttpsError("invalid-argument", "담임 학년·반을 확인하세요.");
+    Object.assign(out, { homeroom: true, grade, classNo });
   }
-  const grades = (input.grades ?? []).map(Number).filter((g) => g >= 1 && g <= 6);
-  if (!grades.length || !programs.length) throw new HttpsError("invalid-argument", "담당 학년과 분야를 고르세요.");
-  return { name, email, teacherType: "subject", grade: null, classNo: null, grades, programs };
+  if (input.subject) {
+    const grades = (input.subject.grades ?? []).map(Number).filter((g) => g >= 1 && g <= 6);
+    const programs = (input.subject.programs ?? []).map(String).filter((p) => /^[\w-]{1,40}$/.test(p));
+    if (!grades.length || !programs.length) throw new HttpsError("invalid-argument", "전담 학년과 담당 항목을 고르세요.");
+    Object.assign(out, { subject: true, grades, programs });
+  }
+  if (!input.admin && !out.homeroom && !out.subject) throw new HttpsError("invalid-argument", "역할을 하나 이상 고르세요.");
+  return out;
 }
 
-/** 교사 가입 신청: 개설된 학교면 그 학교 관리자 승인 대기, 없는 학교면 학교 개설 신청(운영자 승인) */
+/**
+ * 교사·학교 담당자 가입 (역할은 겹쳐서 선택 가능)
+ * - 학교 가입 방식(joinPolicy)이 'open'(기본)이면 바로 사용, 'approval'이면 학교 담당자 승인 대기
+ * - 아직 없는 학교는 그 자리에서 개설되고, 신청자가 학교 담당자가 된다
+ */
 export const requestJoin = onCall({ region: REGION }, async (req) => {
   if (!req.auth) throw new HttpsError("unauthenticated", "로그인이 필요해요.");
   const input = req.data as JoinInput;
   const neis = input?.neis;
-  if (!neis?.schoolCode || !neis?.name) throw new HttpsError("invalid-argument", "학교를 선택하세요.");
+  if (!neis?.schoolCode || !neis?.name || !/^[A-Za-z0-9_-]{2,40}$/.test(neis.schoolCode)) throw new HttpsError("invalid-argument", "학교를 선택하세요.");
   const email = String(req.auth.token.email ?? "").toLowerCase();
   const uid = req.auth.uid;
   const schoolId = neis.schoolCode;
   const draft = staffDraft(input, email);
-  const school = await db.doc(sp(schoolId)).get();
-
-  if (school.exists && school.get("status") === "active") {
-    const ref = db.doc(sp(schoolId, `staff/${uid}`));
-    const cur = await ref.get();
-    if (cur.exists && cur.get("status") === "active") return { status: "active", schoolId };
-    await ref.set({ ...draft, role: cur.get("role") ?? "teacher", status: "pending", createdAt: cur.get("createdAt") ?? FieldValue.serverTimestamp(), updatedAt: FieldValue.serverTimestamp() }, { merge: true });
-    await db.doc(`users/${uid}`).set({ schoolId, email, updatedAt: FieldValue.serverTimestamp() }, { merge: true });
-    return { status: "pending", schoolId };
+  const schoolRef = db.doc(sp(schoolId));
+  const school = await schoolRef.get();
+  let created = false;
+  if (!school.exists) {
+    await schoolRef.set({
+      name: neis.name, shortName: shortSchoolName(neis.name), principalName: "", studentDomain: "", year: SCHOOL_YEAR,
+      logoUrl: "", sealUrl: "", neis: { ...neis }, status: "active", joinPolicy: "open", createdBy: uid, createdAt: FieldValue.serverTimestamp(),
+    });
+    created = true;
   }
-
-  await db.doc(`schoolRequests/${schoolId}_${uid}`).set({
-    schoolId, uid, email, neis: { ...neis }, staff: draft, status: "pending", createdAt: FieldValue.serverTimestamp(),
-  });
-  return { status: "requested", schoolId };
+  const policy = created ? "open" : (school.get("joinPolicy") ?? "open");
+  const ref = db.doc(sp(schoolId, `staff/${uid}`));
+  const cur = await ref.get();
+  const keepAdmin = cur.exists && cur.get("role") === "admin" && cur.get("status") === "active";
+  const wantsAdmin = Boolean(input.admin) || created;
+  const active = policy === "open" || (cur.exists && cur.get("status") === "active");
+  await ref.set(
+    {
+      ...draft,
+      role: keepAdmin || (wantsAdmin && (policy === "open" || created)) ? "admin" : "teacher",
+      requestedAdmin: wantsAdmin,
+      status: active ? "active" : "pending",
+      createdAt: cur.get("createdAt") ?? FieldValue.serverTimestamp(),
+      updatedAt: FieldValue.serverTimestamp(),
+    },
+    { merge: true },
+  );
+  await db.doc(`users/${uid}`).set({ schoolId, email, updatedAt: FieldValue.serverTimestamp() }, { merge: true });
+  return { status: active ? "active" : "pending", schoolId, created };
 });
 
 /** 운영자: 학교 개설 승인 → 학교 생성 + 신청 교사를 그 학교 관리자로 */

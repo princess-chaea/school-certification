@@ -11,7 +11,8 @@ import { fmtDate } from "../../lib/format";
 import { Lightbox, StorageAudio, StorageImage, toast } from "../../components/ui";
 import { PageHeader } from "../../components/Layout";
 import { ProgramCard } from "../../components/ProgramCard";
-import { englishProgress } from "../../../shared/domain";
+import { activePrograms, programById, thresholdsFor } from "../../../shared/domain";
+import { PixelIcon } from "../../components/Pixel";
 import { useEffect } from "react";
 import { onSnapshot } from "firebase/firestore";
 import { db } from "../../firebase";
@@ -45,40 +46,33 @@ export function StudentDetail() {
 
   if (!student) return <div className="page">불러오는 중…</div>;
   const p = student.progress ?? {};
-  const eng = englishProgress(config, p.english?.counts ?? { t1: 0, t2: 0, t3: 0, t4: 0 });
   return (
     <div className="page">
       <Lightbox url={zoom} onClose={() => setZoom(null)} />
       <PageHeader back="/" title={`${student.grade}-${student.classNo} ${student.number}번 ${student.name}`} right={<span className="small muted">{student.email || "계정 없음"}</span>} />
       <div className="grid grid-3">
-        <ProgramCard program={config.programs.reading} progress={p.reading} />
-        <ProgramCard program={config.programs.carbon} progress={p.carbon} />
-        {config.programs.english.grades.includes(student.grade) && (
-          <div className="card">
-            <h3>{config.programs.english.emoji} {config.programs.english.name}</h3>
-            {eng.tasks.map((t) => <div key={t.id} className="small">{t.complete ? "✅" : "⬜"} {t.name} {t.done}/{t.goal}</div>)}
-          </div>
-        )}
+        {activePrograms(config, student.grade).map((x) => <ProgramCard key={x.id} program={x} progress={p[x.id] ?? { count: 0, medal: "none", thresholds: thresholdsFor(config, x, student.grade)! }} />)}
       </div>
-      <div className="section-title">🤖 AI 초안 (선생님이 확인 후 사용)</div>
+      <div className="section-title">AI 초안 (선생님이 확인 후 사용)</div>
       <div className="row">
-        <button className="btn secondary" disabled={busy} onClick={() => ai("feedback")}>💬 격려 피드백 초안</button>
-        <button className="btn secondary" disabled={busy} onClick={() => ai("record")}>📝 누가기록 초안</button>
+        <button className="btn secondary" disabled={busy} onClick={() => ai("feedback")}><PixelIcon name="speech" size={16} /> 격려 피드백 초안</button>
+        <button className="btn secondary" disabled={busy} onClick={() => ai("record")}><PixelIcon name="pen" size={16} /> 누가기록 초안</button>
         {busy && <span className="small muted">작성 중…</span>}
       </div>
       {draft && (
         <div className="card flat stack" style={{ marginTop: 10, background: "var(--navy-50)" }}>
           <textarea className="input" value={draft} onChange={(e) => setDraft(e.target.value)} style={{ minHeight: 100 }} />
-          <div><button className="btn sm" onClick={() => { navigator.clipboard?.writeText(draft); toast("복사했어요."); }}>📋 복사</button></div>
+          <div><button className="btn sm" onClick={() => { navigator.clipboard?.writeText(draft); toast("복사했어요."); }}>복사</button></div>
         </div>
       )}
       <div className="section-title">기록 ({rows?.length ?? 0})</div>
       <div className="stack">
         {(rows ?? []).map((r) => (
           <div key={r.id} className={`card flat sub-card ${r.status === "deleted" ? "deleted" : ""}`}>
-            {r.photoPath ? <StorageImage path={r.photoPath} onOpen={setZoom} /> : <div className="thumb">{r.audioPath ? "🎙️" : config.programs[r.program].emoji}</div>}
+            {r.photoPath ? <StorageImage path={r.photoPath} onOpen={setZoom} /> : <div className="thumb"><PixelIcon name={r.audioPath ? "mic" : programById(config, r.program)?.icon ?? "star"} size={32} /></div>}
             <div className="stack" style={{ gap: 3 }}>
-              <div className="row between"><b className="small">{config.programs[r.program].emoji} {r.bookTitle || r.activityType || (r.task === "t4" ? "펀리딩 낭독" : r.task === "t2" ? "알공" : r.source === "teacher" ? `교사 관찰 ${r.count}회` : "기록")}</b><span className="tiny">{r.activityDate ?? fmtDate(r.createdAt)}</span></div>
+              <div className="row between"><b className="small icon-text"><PixelIcon name={programById(config, r.program)?.icon ?? "star"} size={16} /> {programById(config, r.program)?.name ?? r.program} {r.activityType ?? ""} {r.source === "teacher" ? `· 교사 관찰 ${r.count}회` : ""} {r.status === "pending" && <span className="chip warn">확인 대기</span>}</b><span className="tiny">{r.activityDate ?? fmtDate(r.createdAt)}</span></div>
+              {Object.entries(r.fields ?? {}).filter(([, v]) => v).map(([k, v]) => <div key={k} className="small"><span className="muted">{k}:</span> {v}</div>)}
               {r.text && <div className="small muted">“{r.text}”</div>}
               {r.audioPath && <StorageAudio path={r.audioPath} />}
               {r.status === "deleted" && <span className="chip red">제외됨: {r.deleteReason}</span>}

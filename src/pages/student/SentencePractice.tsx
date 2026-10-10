@@ -1,9 +1,8 @@
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { doc, serverTimestamp, setDoc, updateDoc } from "firebase/firestore";
-import { httpsCallable } from "firebase/functions";
 import { sp, useSchoolId } from "../../lib/tenant";
-import { db, functions } from "../../firebase";
+import { db } from "../../firebase";
 import { useMyEnglishItems, useSentenceSet } from "../../lib/data";
 import { completedRounds, itemId, ROUNDS_REQUIRED, statusLabel, targetOf } from "../../lib/english";
 import { uploadBlob } from "../../lib/media";
@@ -15,11 +14,16 @@ import { fmtSec } from "../../lib/format";
 import type { EnglishItem, EnglishRound, StudentDoc } from "../../lib/types";
 import { Stamp, toast } from "../../components/ui";
 import { PageHeader } from "../../components/Layout";
-import { useDingOnCheck } from "./EnglishRoom";
+import { useDingOnCheck } from "./SentenceSet";
+import type { ProgramDef, TaskDef } from "../../../shared/domain";
+import { taskSetIds } from "../../../shared/domain";
+import { PixelIcon } from "../../components/Pixel";
 
 type Step = "type" | "record" | "saved";
 
-export function SentencePractice({ student, setId, no }: { student: StudentDoc; setId: string; no: number }) {
+export function SentencePractice({ student, program, task: taskDef, no }: { student: StudentDoc; program: ProgramDef; task: TaskDef; no: number }) {
+  const setId = taskSetIds(taskDef, student.grade)[0];
+  const base = `/do/${program.id}/${taskDef.id}`;
   const schoolId = useSchoolId();
   const nav = useNavigate();
   const set = useSentenceSet(setId);
@@ -28,15 +32,13 @@ export function SentencePractice({ student, setId, no }: { student: StudentDoc; 
   const s = set?.items.find((x) => x.no === no);
   const item = useMemo(() => items?.find((i) => i.setId === setId && i.no === no), [items, setId, no]);
   const id = itemId(student.year, student.sid, setId, no);
-  const task = setId.startsWith("task3") ? "t3" : "t1";
+  const task = taskDef.id;
 
   const [step, setStep] = useState<Step>("type");
   const [typed, setTyped] = useState("");
   const [attempts, setAttempts] = useState<string[]>([]);
   const [wrong, setWrong] = useState(false);
   const [showHint, setShowHint] = useState(false);
-  const [aiText, setAiText] = useState<string | null>(null);
-  const [aiBusy, setAiBusy] = useState(false);
   const [stt, setStt] = useState<{ text: string; ratio: number } | null>(null);
   const [saving, setSaving] = useState(false);
   const rec = useRecorder(30_000);
@@ -48,7 +50,6 @@ export function SentencePractice({ student, setId, no }: { student: StudentDoc; 
     setAttempts([]);
     setWrong(false);
     setShowHint(false);
-    setAiText(null);
     setStt(null);
     rec.reset();
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -63,7 +64,7 @@ export function SentencePractice({ student, setId, no }: { student: StudentDoc; 
   const locked = status === "checked" || status === "requested";
 
   if (s.type === "student" && !item?.custom?.en) {
-    return <CustomSentenceForm student={student} setId={setId} no={no} unit={s.unit ?? 0} task={task} prompt={s.prompt} />;
+    return <CustomSentenceForm student={student} program={program.id} base={base} setId={setId} no={no} unit={s.unit ?? 0} task={task} prompt={s.prompt} />;
   }
 
   function check() {
@@ -81,21 +82,9 @@ export function SentencePractice({ student, setId, no }: { student: StudentDoc; 
     }
   }
 
-  async function explain() {
-    setAiBusy(true);
-    try {
-      const res = await httpsCallable<unknown, { text: string }>(functions, "explainTyping")({ schoolId, ko: target.ko, answer: target.en, attempts });
-      setAiText(res.data.text);
-    } catch (e) {
-      setAiText((e as Error).message || "지금은 AI 설명을 쓸 수 없어요.");
-    } finally {
-      setAiBusy(false);
-    }
-  }
-
   async function checkPronunciation() {
     try {
-      toast("🎧 문장을 말해 보세요…");
+      toast("문장을 말해 보세요…");
       const text = await recognizeOnce();
       setStt({ text, ratio: speechMatchRatio(text, target.en) });
     } catch (e) {
@@ -126,7 +115,7 @@ export function SentencePractice({ student, setId, no }: { student: StudentDoc; 
         await updateDoc(doc(db, sp(schoolId, "englishItems"), id), { rounds: nextRounds, status: nextStatus, updatedAt: serverTimestamp() });
       } else {
         await setDoc(doc(db, sp(schoolId, "englishItems"), id), {
-          sid: student.sid, year: student.year, grade: student.grade, classNo: student.classNo, setId, task, no,
+          sid: student.sid, year: student.year, grade: student.grade, classNo: student.classNo, program: program.id, setId, task, no,
           rounds: nextRounds, status: nextStatus, updatedAt: serverTimestamp(),
         });
       }
@@ -140,7 +129,7 @@ export function SentencePractice({ student, setId, no }: { student: StudentDoc; 
 
   async function requestCheck() {
     await updateDoc(doc(db, sp(schoolId, "englishItems"), id), { status: "requested", requestedAt: serverTimestamp(), updatedAt: serverTimestamp() });
-    toast("검사 요청 완료! 선생님께 말해 주세요 🙋");
+    toast("검사 요청 완료! 선생님께 말해 주세요");
   }
 
   function again() {
@@ -149,7 +138,6 @@ export function SentencePractice({ student, setId, no }: { student: StudentDoc; 
     setAttempts([]);
     setWrong(false);
     setShowHint(false);
-    setAiText(null);
     setStt(null);
     rec.reset();
   }
@@ -158,12 +146,12 @@ export function SentencePractice({ student, setId, no }: { student: StudentDoc; 
     <div className="page narrow">
       {ding.stamp && <Stamp title="띵동!" sub={ding.stamp} onDone={ding.clear} />}
       <PageHeader
-        back={`/english/set/${setId}`}
+        back={base}
         title={<>문장 #{no}</>}
         right={
           <>
-            <button className="btn ghost sm" disabled={!prevNo} onClick={() => prevNo && nav(`/english/set/${setId}/${prevNo}`)}>◀ 이전</button>
-            <button className="btn ghost sm" disabled={!nextNo} onClick={() => nextNo && nav(`/english/set/${setId}/${nextNo}`)}>다음 ▶</button>
+            <button className="btn ghost sm" disabled={!prevNo} onClick={() => prevNo && nav(`${base}/${prevNo}`)}>이전</button>
+            <button className="btn ghost sm" disabled={!nextNo} onClick={() => nextNo && nav(`${base}/${nextNo}`)}>다음</button>
           </>
         }
       />
@@ -183,18 +171,18 @@ export function SentencePractice({ student, setId, no }: { student: StudentDoc; 
         {status === "checked" ? (
           <div className="stack" style={{ alignItems: "center" }}>
             <div className="answer-reveal">{target.en}</div>
-            <div className="chip ok">✅ {item?.checkedByName ?? "선생님"} 확인 완료</div>
-            <button className="btn secondary" onClick={() => speak(target.en)}>🔊 다시 듣기</button>
+            <div className="chip ok"><PixelIcon name="check" size={14} /> {item?.checkedByName ?? "선생님"} 확인 완료</div>
+            <button className="btn secondary" onClick={() => speak(target.en)}><PixelIcon name="play" size={16} /> 다시 듣기</button>
           </div>
         ) : status === "requested" ? (
           <div className="stack" style={{ alignItems: "center" }}>
             <div className="answer-reveal">{target.en}</div>
-            <div className="chip warn">⏳ 선생님 검사를 기다리는 중이에요. 선생님 앞에서 말해 보세요!</div>
-            <button className="btn secondary" onClick={() => speak(target.en)}>🔊 듣기</button>
+            <div className="chip warn"><PixelIcon name="clock" size={14} /> 선생님 검사를 기다리는 중이에요. 선생님 앞에서 말해 보세요!</div>
+            <button className="btn secondary" onClick={() => speak(target.en)}><PixelIcon name="play" size={16} /> 듣기</button>
           </div>
         ) : step === "type" ? (
           <>
-            <div className="small muted" style={{ textAlign: "center" }}>① 위 뜻을 영어 문장으로 써 보세요</div>
+            <div className="small muted hud" style={{ textAlign: "center" }}>STEP 1 · 위 뜻을 영어 문장으로 써 보세요</div>
             <input
               className="input type-input"
               value={typed}
@@ -221,20 +209,18 @@ export function SentencePractice({ student, setId, no }: { student: StudentDoc; 
               </div>
             )}
             {showHint && <div className="answer-reveal" style={{ fontSize: "1.1rem", letterSpacing: ".05em" }}>힌트: {firstLetterHint(target.en)}</div>}
-            {aiText && <div className="card flat small" style={{ background: "var(--navy-50)" }}>🤖 {aiText}</div>}
             <div className="row" style={{ justifyContent: "center" }}>
               <button className="btn big" onClick={check} disabled={!typed.trim()}>확인</button>
-              {attempts.length >= 2 && !showHint && <button className="btn secondary" onClick={() => setShowHint(true)}>💡 힌트</button>}
-              {attempts.length >= 3 && !aiText && <button className="btn secondary" disabled={aiBusy} onClick={explain}>{aiBusy ? "생각 중…" : "🤖 왜 틀렸을까?"}</button>}
+              {attempts.length >= 2 && !showHint && <button className="btn secondary" onClick={() => setShowHint(true)}><PixelIcon name="sparkle" size={16} /> 힌트</button>}
             </div>
           </>
         ) : step === "record" ? (
           <div className="stack" style={{ alignItems: "center" }}>
-            <div className="answer-reveal">⭕ {target.en}</div>
-            <button className="btn secondary" onClick={() => speak(target.en)}>🔊 원어민 발음 듣기</button>
-            <div className="small muted">② 🎙️ 버튼을 누르고 문장을 소리 내어 말한 뒤 ⏹ 를 눌러요</div>
+            <div className="answer-reveal"><PixelIcon name="check" size={22} /> {target.en}</div>
+            <button className="btn secondary" onClick={() => speak(target.en)}><PixelIcon name="play" size={16} /> 원어민 발음 듣기</button>
+            <div className="small muted hud">STEP 2 · 녹음 버튼을 누르고 문장을 말한 뒤 다시 눌러요</div>
             <button className={`rec-btn ${rec.state === "recording" ? "on" : ""}`} onClick={() => (rec.state === "recording" ? rec.stop() : rec.start())} aria-label="녹음">
-              {rec.state === "recording" ? "⏹" : "🎙️"}
+              <PixelIcon name={rec.state === "recording" ? "close" : "mic"} size={44} recolor={rec.state === "recording" ? { r: "#ffffff" } : undefined} />
             </button>
             <div className="small">{rec.state === "recording" ? `녹음 중 ${fmtSec(rec.elapsed)}` : rec.recording ? `${fmtSec(rec.recording.durationMs)} 녹음됨` : ""}</div>
             {rec.error && <div className="chip red">{rec.error}</div>}
@@ -243,12 +229,12 @@ export function SentencePractice({ student, setId, no }: { student: StudentDoc; 
                 <audio controls src={rec.recording.url} />
                 {rec.recording.durationMs < 1000 && <div className="chip warn">너무 짧아요. 다시 녹음해 주세요.</div>}
                 {speechRecognitionSupported() && (
-                  <button className="btn ghost sm" onClick={checkPronunciation}>🎧 발음 스스로 점검 (선택)</button>
+                  <button className="btn ghost sm" onClick={checkPronunciation}><PixelIcon name="eye" size={16} /> 발음 스스로 점검 (선택)</button>
                 )}
                 {stt && (
                   <div className="small" style={{ textAlign: "center" }}>
                     들린 문장: “{stt.text || "(못 알아들음)"}” · 일치 {Math.round(stt.ratio * 100)}%
-                    {stt.ratio >= 0.8 ? " 👍" : " — 천천히 또박또박 다시 해 볼까?"}
+                    {stt.ratio >= 0.8 ? " · GOOD!" : " · 천천히 또박또박 다시 해 볼까?"}
                   </div>
                 )}
                 <div className="row">
@@ -260,13 +246,13 @@ export function SentencePractice({ student, setId, no }: { student: StudentDoc; 
           </div>
         ) : (
           <div className="stack" style={{ alignItems: "center" }}>
-            <div style={{ fontSize: "2.4rem" }}>🎉</div>
+            <PixelIcon name="trophy" size={48} />
             {status === "ready" ? (
               <>
                 <b>{ROUNDS_REQUIRED}번 연습 완료! 이제 선생님께 검사를 받아요.</b>
                 <div className="row">
-                  <button className="btn big ok" onClick={requestCheck}>🙋 검사 요청하기</button>
-                  {nextNo && <button className="btn secondary" onClick={() => nav(`/english/set/${setId}/${nextNo}`)}>다음 문장 ▶</button>}
+                  <button className="btn big ok" onClick={requestCheck}><PixelIcon name="hand" size={20} /> 검사 요청하기</button>
+                  {nextNo && <button className="btn secondary" onClick={() => nav(`${base}/${nextNo}`)}>다음 문장</button>}
                 </div>
               </>
             ) : (
@@ -274,28 +260,28 @@ export function SentencePractice({ student, setId, no }: { student: StudentDoc; 
                 <b>{rounds}회차 완료! {ROUNDS_REQUIRED - rounds}번 더 연습하면 검사받을 수 있어요.</b>
                 <div className="row">
                   <button className="btn big" onClick={again}>한 번 더 연습</button>
-                  {nextNo && <button className="btn secondary" onClick={() => nav(`/english/set/${setId}/${nextNo}`)}>다음 문장 ▶</button>}
+                  {nextNo && <button className="btn secondary" onClick={() => nav(`${base}/${nextNo}`)}>다음 문장</button>}
                 </div>
               </>
             )}
           </div>
         )}
         {!locked && status === "ready" && step === "type" && (
-          <button className="btn ok" onClick={requestCheck}>🙋 바로 검사 요청하기 (연습 {rounds}회 완료)</button>
+          <button className="btn ok" onClick={requestCheck}><PixelIcon name="hand" size={18} /> 바로 검사 요청하기 (연습 {rounds}회 완료)</button>
         )}
       </div>
     </div>
   );
 }
 
-function CustomSentenceForm({ student, setId, no, unit, task, prompt }: { student: StudentDoc; setId: string; no: number; unit: number; task: string; prompt?: string }) {
+function CustomSentenceForm({ student, program, base, setId, no, unit, task, prompt }: { student: StudentDoc; program: string; base: string; setId: string; no: number; unit: number; task: string; prompt?: string }) {
   const schoolId = useSchoolId();
   const [en, setEn] = useState("");
   const [ko, setKo] = useState("");
   const [busy, setBusy] = useState(false);
   return (
     <div className="page narrow">
-      <PageHeader back={`/english/set/${setId}`} title={<>✏️ #{no} 나만의 {unit}단원 표현</>} />
+      <PageHeader back={base} icon="pen" title={<>#{no} 나만의 {unit}단원 표현</>} />
       <p className="muted small">{prompt ?? `${unit}단원에서 배운 표현을 골라 적어 보세요.`} 선생님이 검사할 때 확인해 주세요.</p>
       <div className="card stack">
         <label className="field"><span>영어 문장</span>
@@ -311,7 +297,7 @@ function CustomSentenceForm({ student, setId, no, unit, task, prompt }: { studen
             setBusy(true);
             try {
               await setDoc(doc(db, sp(schoolId, "englishItems"), itemId(student.year, student.sid, setId, no)), {
-                sid: student.sid, year: student.year, grade: student.grade, classNo: student.classNo, setId, task, no,
+                sid: student.sid, year: student.year, grade: student.grade, classNo: student.classNo, program, setId, task, no,
                 custom: { en: en.trim(), ko: ko.trim() }, rounds: [], status: "practicing", updatedAt: serverTimestamp(),
               });
             } catch (e) {

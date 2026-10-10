@@ -4,6 +4,7 @@ import { z } from "zod";
 import { getStorage } from "firebase-admin/storage";
 import { onDocumentCreated } from "firebase-functions/v2/firestore";
 import { onCall, HttpsError } from "firebase-functions/v2/https";
+import type { ProgramDef, TaskDef } from "./shared/domain.js";
 import { defineSecret } from "firebase-functions/params";
 import { logger } from "firebase-functions";
 import { db, loadConfig, REGION, FieldValue, requireStaff, requireSchoolId, staffCanSeeStudent, todayKey, sp } from "./common.js";
@@ -46,61 +47,70 @@ async function recordTokens(schoolId: string, usage: { input_tokens?: number; ou
 const PhotoReview = z.object({
   verdict: z.enum(["ok", "check", "reject"]),
   reason: z.string(),
-  bookTitle: z.string().nullable(),
   activityType: z.string().nullable(),
-  feedback: z.string(),
-  question: z.string().nullable(),
 });
 
-const SYSTEM_PHOTO = `당신은 초등학교 「학교장 인증제」 활동 사진을 1차로 확인하는 보조 교사입니다.
-최종 판단은 담임 선생님이 합니다. 당신의 판단은 선생님이 의심 기록을 빨리 찾도록 돕는 참고용입니다.
+/** AI 판정은 학생이 읽을 수 없는 aiReviews/{제출ID} 에만 저장 (교사 검토용) */
+async function saveReview(schoolId: string, id: string, data: FirebaseFirestore.DocumentData, review: Record<string, unknown>) {
+  await db.doc(sp(schoolId, `aiReviews/${id}`)).set({
+    sid: data.sid, year: data.year, grade: data.grade, classNo: data.classNo, program: data.program,
+    ...review, at: FieldValue.serverTimestamp(),
+  });
+}
+
+const SYSTEM_PHOTO = `당신은 초등학교 「학교장 인증제」 활동 증빙 사진을 1차로 확인하는 보조 교사입니다.
+최종 판단은 선생님이 합니다. 당신의 판단은 선생님이 의심 기록을 빨리 찾도록 돕는 참고용입니다.
 
 verdict 기준:
 - ok: 요구한 활동이 사진에서 분명히 확인됨
 - check: 흐릿함, 일부만 보임, 활동인지 애매함 등 선생님이 한 번 볼 필요가 있음
 - reject: 활동과 전혀 관계없는 사진(빈 화면, 장난 사진, 다른 과목 숙제 등)
 
-reason: 선생님에게 보여 줄 한 문장 근거 (한국어)
-feedback: 학생에게 보여 줄 따뜻한 격려 1~2문장 (초등학생 눈높이, 존댓말 아닌 다정한 반말, 이모지 1개까지). 비교·점수 언급 금지.
+reason: 선생님에게 보여 줄 한 문장 근거 (한국어). 학생에게는 보이지 않습니다.
 사진 속 사람의 얼굴, 이름 등 개인 정보는 언급하지 마세요.`;
 
-function photoPrompt(program: string, task: string | undefined, data: FirebaseFirestore.DocumentData, activityTypes: string[]) {
-  if (program === "reading") {
-    return `[독서 마라톤] 독서기록장(독후 감상 기록) 1쪽 사진입니다.
-학생이 적은 책 제목: ${data.bookTitle || "(없음)"}
-확인할 것: 독서기록장 쪽이 맞는지, 내용이 성실히 채워졌는지(1쪽 분량), 책 제목.
-bookTitle: 사진이나 입력에서 읽을 수 있는 책 제목(없으면 null). activityType: null.
-question: 이 책에 대해 학생이 더 생각해 볼 만한 열린 질문 1개 (짧게).`;
-  }
-  if (program === "carbon") {
-    return `[탄소중립 환경 지킴이] 탄소중립·환경 보호 실천 사진입니다.
-학생이 고른 활동 종류: ${data.activityType || "(없음)"} / 학생 소감: ${data.text || "(없음)"}
-확인할 것: 본인의 실천 과정이 확인되는 사진인지, 탄소중립에 도움이 되는 활동인지.
-activityType: 다음 중 가장 알맞은 것 하나 → ${activityTypes.join(", ")}
-bookTitle: null. question: null.`;
-  }
-  return `[영어 - ${task === "t2" ? "알공" : "영어 과제"}] 학습 완료 화면 캡처입니다.
-확인할 것: 영어 학습 앱(알공 등)의 완료·결과 화면이 맞는지.
-bookTitle: null. activityType: null. question: null.`;
+function photoPrompt(program: ProgramDef, task: TaskDef | undefined, data: FirebaseFirestore.DocumentData) {
+  const fields = (data.fields ?? {}) as Record<string, string>;
+  const lines = [
+    `[인증 항목] ${program.name}${task ? ` - ${task.name}` : ""} (${program.area})`,
+    `[항목 설명] ${task?.description ?? program.description}`,
+  ];
+  for (const f of task?.fields ?? program.fields ?? []) if (fields[f.key]) lines.push(`[${f.label}] ${fields[f.key]}`);
+  if (data.activityType) lines.push(`[학생이 고른 활동 종류] ${data.activityType}`);
+  if (data.text) lines.push(`[학생 소감] ${String(data.text).slice(0, 300)}`);
+  lines.push("확인할 것: 사진이 이 항목의 활동 증빙으로 알맞은지, 본인의 실천이 확인되는지.");
+  lines.push(program.choices?.length ? `activityType: 다음 중 가장 알맞은 것 하나 → ${program.choices.join(", ")}` : "activityType: null");
+  return lines.join("\n");
 }
 
-export const reviewSubmission = onDocumentCreated(
+/** 학생 제출 직후: 자동 인정 항목은 바로 인정(기본은 교사 승인), AI 사진 1차 확인 */
+export const onSubmissionCreated = onDocumentCreated(
   { document: "schools/{schoolId}/submissions/{id}", region: REGION, secrets: [ANTHROPIC_API_KEY], memory: "512MiB", timeoutSeconds: 120 },
   async (event) => {
     const snap = event.data;
     if (!snap) return;
     const data = snap.data();
-    if (data.source !== "student" || !data.photoPath || data.isDemo) return;
-    if (!(data.program === "reading" || data.program === "carbon" || (data.program === "english" && data.task === "t2"))) return;
-
+    if (data.source !== "student" || data.isDemo) return;
     const schoolId = event.params.schoolId;
     const config = await loadConfig(schoolId);
-    if (!config.ai.enabled) return;
+    const program = config.programs.find((p) => p.id === data.program);
+    const task = program?.tasks?.find((t) => t.id === data.task);
+    if (!program) {
+      await snap.ref.update({ status: "deleted", deleteReason: "없는 인증 항목" });
+      return;
+    }
+
+    if (program.approval === "auto") await snap.ref.update({ status: "active", reviewedByName: "자동 인정", reviewedAt: FieldValue.serverTimestamp() });
+
+    if (!config.ai.enabled || program.aiReview === false) return;
+    if (!data.photoPath) {
+      if (data.text && String(data.text).trim().length >= 2) await reviewText(schoolId, config, program, task, data, snap.id);
+      return;
+    }
     if (!(await reserveUsage(schoolId, "photo", config.ai.dailyLimit))) {
       logger.warn("AI daily limit reached");
       return;
     }
-
     try {
       const [buf] = await getStorage().bucket().file(data.photoPath).download();
       const mediaType = (data.photoType as string) || "image/jpeg";
@@ -114,66 +124,46 @@ export const reviewSubmission = onDocumentCreated(
           {
             role: "user",
             content: [
-              {
-                type: "image",
-                source: { type: "base64", media_type: mediaType as "image/jpeg", data: buf.toString("base64") },
-              },
-              { type: "text", text: photoPrompt(data.program, data.task, data, config.programs.carbon.activityTypes ?? []) },
+              { type: "image", source: { type: "base64", media_type: mediaType as "image/jpeg", data: buf.toString("base64") } },
+              { type: "text", text: photoPrompt(program, task, data) },
             ],
           },
         ],
       });
       await recordTokens(schoolId, response.usage, model);
       if (response.stop_reason === "refusal" || !response.parsed_output) {
-        await snap.ref.update({ ai: { verdict: "check", reason: "AI가 판단하지 못했어요. 선생님 확인이 필요해요.", model, at: FieldValue.serverTimestamp() } });
+        await saveReview(schoolId, snap.id, data, { verdict: "check", reason: "AI가 판단하지 못했어요. 선생님 확인이 필요해요.", model });
         return;
       }
-      const r = response.parsed_output;
-      await snap.ref.update({
-        ai: { ...r, model, at: FieldValue.serverTimestamp() },
-        ...(data.program === "carbon" && !data.activityType && r.activityType ? { activityType: r.activityType } : {}),
-      });
+      await saveReview(schoolId, snap.id, data, { ...response.parsed_output, model });
     } catch (err) {
       logger.error("photo review failed", { id: event.params.id, err: String(err) });
-      await snap.ref.update({ ai: { verdict: "check", reason: "AI 확인 중 오류가 났어요.", at: FieldValue.serverTimestamp() } });
+      await saveReview(schoolId, snap.id, data, { verdict: "check", reason: "AI 확인 중 오류가 났어요." });
     }
   },
 );
 
-// ── A-3: 영어 타이핑 오답 설명 (Haiku) ──────────────────────────────
+const TextReview = z.object({ verdict: z.enum(["ok", "check", "reject"]), reason: z.string() });
 
-export const explainTyping = onCall({ region: REGION, secrets: [ANTHROPIC_API_KEY] }, async (req) => {
-  const schoolId = requireSchoolId(req.data);
-  const email = String(req.auth?.token.email ?? "").toLowerCase();
-  const stu = email ? await db.doc(sp(schoolId, `students/${email}`)).get() : null;
-  if (!stu?.exists) throw new HttpsError("permission-denied", "학생 계정만 사용할 수 있어요.");
-  const { ko, answer, attempts } = req.data as { ko?: string; answer?: string; attempts?: string[] };
-  if (!answer || !Array.isArray(attempts) || !attempts.length) throw new HttpsError("invalid-argument", "입력이 부족해요.");
-  const config = await loadConfig(schoolId);
-  if (!config.ai.enabled) throw new HttpsError("unavailable", "지금은 AI 설명을 쓸 수 없어요.");
-  if (!(await reserveUsage(schoolId, "typing", config.ai.dailyLimit))) throw new HttpsError("resource-exhausted", "오늘 AI 사용량이 다 찼어요.");
-
-  const model = config.ai.photoModel;
-  const response = await client().messages.create({
-    model,
-    max_tokens: 1024,
-    output_config: { effort: "low" },
-    system: `너는 초등학생(4~6학년)의 영어 문장 쓰기를 돕는 다정한 선생님이야.
-학생이 쓴 문장과 정답을 비교해서 무엇이 틀렸는지 한국어로 2~3문장으로 설명해.
-- 정답 문장 전체를 그대로 알려주지 마. 틀린 단어의 규칙(예: 과거분사, 관사 a/the, 축약형, 철자)을 힌트로 줘.
-- 쉬운 말, 다정한 반말, 마지막에 응원 한마디.`,
-    messages: [
-      {
-        role: "user",
-        content: `해석: ${ko ?? ""}\n정답: ${answer}\n학생이 쓴 답(최근 순서대로):\n${attempts.slice(-3).map((a, i) => `${i + 1}. ${a}`).join("\n")}`,
-      },
-    ],
-  });
-  await recordTokens(schoolId, response.usage, model);
-  if (response.stop_reason === "refusal") return { text: "이번 문장은 선생님께 직접 물어보자!" };
-  const text = response.content.flatMap((b) => (b.type === "text" ? [b.text] : [])).join("\n").trim();
-  return { text: text || "틀린 단어를 천천히 다시 비교해 보자!" };
-});
+/** 사진 없이 글만 올린 기록: 항목과 관련 있는 내용인지 1차 확인 (교사 경고용) */
+async function reviewText(schoolId: string, config: Awaited<ReturnType<typeof loadConfig>>, program: ProgramDef, task: TaskDef | undefined, data: FirebaseFirestore.DocumentData, id: string) {
+  if (!(await reserveUsage(schoolId, "text", config.ai.dailyLimit))) return;
+  try {
+    const model = config.ai.photoModel;
+    const response = await client().messages.parse({
+      model,
+      max_tokens: 1024,
+      output_config: { effort: "low", format: zodOutputFormat(TextReview) },
+      system: "초등학교 인증제 활동 기록(글)을 1차로 확인하는 보조 교사입니다. ok=항목과 관련된 성실한 기록, check=짧거나 애매함, reject=관련 없음·의미 없는 글자·복사한 듯한 내용. reason 은 선생님에게 보여 줄 한국어 한 문장.",
+      messages: [{ role: "user", content: `[인증 항목] ${program.name}${task ? ` - ${task.name}` : ""}\n[설명] ${task?.description ?? program.description}\n[학생 글]\n${String(data.text).slice(0, 1500)}` }],
+    });
+    await recordTokens(schoolId, response.usage, model);
+    if (response.stop_reason === "refusal" || !response.parsed_output) return;
+    await saveReview(schoolId, id, data, { ...response.parsed_output, model });
+  } catch (err) {
+    logger.error("text review failed", { err: String(err) });
+  }
+}
 
 // ── A-4: 교사용 피드백·누가기록 초안 (Sonnet) ─────────────────────────
 
@@ -197,8 +187,8 @@ export const draftComment = onCall({ region: REGION, secrets: [ANTHROPIC_API_KEY
     .filter((d) => d.status === "active")
     .map((d) => {
       const date = d.createdAt?.toDate?.().toISOString().slice(0, 10) ?? "";
-      const parts = [date, config.programs[d.program as "reading"]?.name ?? d.program];
-      if (d.bookTitle) parts.push(`책: ${d.bookTitle}`);
+      const parts = [date, config.programs.find((p) => p.id === d.program)?.name ?? d.program];
+      for (const [k, v] of Object.entries((d.fields ?? {}) as Record<string, string>)) if (v) parts.push(`${k}: ${v}`);
       if (d.activityType) parts.push(`활동: ${d.activityType}`);
       if (d.text) parts.push(`소감: ${String(d.text).slice(0, 120)}`);
       if (d.source === "teacher") parts.push(`교사 관찰 ${d.count}회`);
@@ -220,7 +210,7 @@ export const draftComment = onCall({ region: REGION, secrets: [ANTHROPIC_API_KEY
     model,
     max_tokens: 2048,
     output_config: { effort: "low" as const },
-    system: "당신은 초등학교 교사의 업무를 돕는 보조자입니다. 「학교장 인증제」(독서 마라톤, 탄소중립 환경 지킴이, 영어 말하기) 활동 기록을 바탕으로 초안을 씁니다. 교사가 검토·수정한 뒤 사용합니다.",
+    system: `당신은 초등학교 교사의 업무를 돕는 보조자입니다. 「학교장 인증제」(${config.programs.filter((p) => p.enabled).map((p) => p.name).join(", ")}) 활동 기록을 바탕으로 초안을 씁니다. 교사가 검토·수정한 뒤 사용합니다. 이모지는 쓰지 마세요.`,
     messages: [
       {
         role: "user" as const,

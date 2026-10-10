@@ -9,6 +9,7 @@ import { useConfig } from "../../lib/config";
 import { resizeImage } from "../../lib/media";
 import { PageHeader } from "../../components/Layout";
 import { toast } from "../../components/ui";
+import { PixelIcon, PixelMedal } from "../../components/Pixel";
 import { type AppConfig } from "../../../shared/domain";
 import { classesOf, GRADES } from "../../lib/classes";
 
@@ -32,6 +33,7 @@ export function Settings() {
   const [cfg, setCfg] = useState<AppConfig>(config);
   const [principal, setPrincipal] = useState(school.principalName);
   const [domain, setDomain] = useState(school.studentDomain);
+  const [joinPolicy, setJoinPolicy] = useState<"open" | "approval">(((school as { joinPolicy?: string }).joinPolicy as "open" | "approval") ?? "open");
   const [busy, setBusy] = useState<string | null>(null);
   const logoRef = useRef<HTMLInputElement>(null);
   const sealRef = useRef<HTMLInputElement>(null);
@@ -66,20 +68,18 @@ export function Settings() {
   }
 
   const saveConfig = () => run("config", async () => {
-    await setDoc(doc(db, sp(schoolId, "config/app")), { ...cfg, updatedAt: serverTimestamp() });
+    await setDoc(doc(db, sp(schoolId, "config/app")), { medalMultipliers: cfg.medalMultipliers, ai: cfg.ai, certificate: cfg.certificate, updatedAt: serverTimestamp() }, { merge: true });
     const r = await call<{ students: number }>("recomputeAll", { schoolId });
     return `저장하고 학생 ${r.students}명의 진행률을 다시 계산했어요.`;
   });
-  const setBase = (program: "reading" | "carbon", grade: number, v: number) =>
-    setCfg((c) => ({ ...c, programs: { ...c.programs, [program]: { ...c.programs[program], baseByGrade: { ...c.programs[program].baseByGrade, [String(grade)]: v } } } }));
 
   return (
     <div className="page narrow">
-      <PageHeader title="⚙️ 학교 설정" right={<span className="chip gray">학교코드 {schoolId}</span>} />
+      <PageHeader icon="gear" title="학교 설정" right={<span className="chip gray">학교코드 {schoolId}</span>} />
 
-      <Section title="🏫 학교 정보">
+      <Section title="학교 정보">
         <div className="row">
-          {school.logoUrl ? <img src={school.logoUrl} alt="교표" style={{ width: 72, height: 72, objectFit: "contain", borderRadius: 12, border: "1px solid var(--line)", background: "#fff" }} /> : <div className="thumb" style={{ width: 72, height: 72 }}>🏫</div>}
+          {school.logoUrl ? <img src={school.logoUrl} alt="교표" style={{ width: 72, height: 72, objectFit: "contain", borderRadius: 12, border: "1px solid var(--line)", background: "#fff" }} /> : <div className="thumb" style={{ width: 72, height: 72 }}><PixelIcon name="school" size={36} /></div>}
           <div className="stack" style={{ gap: 4 }}>
             <b>{school.name}</b>
             <span className="small muted">{(school as { neis?: { address?: string } }).neis?.address ?? ""}</span>
@@ -98,42 +98,27 @@ export function Settings() {
         <label className="field"><span>학생 계정 도메인 (선택: CSV 이메일에 @이 없을 때 붙임)</span>
           <input className="input" value={domain} onChange={(e) => setDomain(e.target.value.trim())} placeholder="haju.es.kr" />
         </label>
-        <div><button className="btn" disabled={busy === "school"} onClick={() => run("school", async () => { await updateDoc(doc(db, sp(schoolId)), { principalName: principal.trim(), studentDomain: domain, updatedAt: serverTimestamp() }); })}>학교 정보 저장</button></div>
-      </Section>
-
-      <Section title="🎯 인증 기준 (동 = 학교 운영 계획서의 인증 기준)">
-        {(["reading", "carbon"] as const).map((p) => (
-          <div key={p} className="stack" style={{ gap: 6 }}>
-            <span className="small"><b>{cfg.programs[p].emoji} {cfg.programs[p].name}</b> · 학년별 동(인증) 기준 ({cfg.programs[p].unit})</span>
-            <div className="row" style={{ gap: 6 }}>
-              {GRADES.map((g) => (
-                <label key={g} className="row small" style={{ gap: 4 }}>{g}학년
-                  <input className="input sm" type="number" min={1} style={{ width: 70 }} value={cfg.programs[p].baseByGrade?.[String(g)] ?? ""} onChange={(e) => setBase(p, g, Math.max(1, Number(e.target.value) || 1))} />
-                </label>
-              ))}
-            </div>
+        <div className="field">
+          <span style={{ fontWeight: 600 }}>교사·담당자 가입 방식</span>
+          <div className="row">
+            <button className={`choice ${joinPolicy === "open" ? "on" : ""}`} onClick={() => setJoinPolicy("open")}>가입 즉시 사용</button>
+            <button className={`choice ${joinPolicy === "approval" ? "on" : ""}`} onClick={() => setJoinPolicy("approval")}>학교 담당자 승인 후 사용 (권장: 실제 학생 데이터 운영 시)</button>
           </div>
-        ))}
-        <div className="row small">
-          은 = 동 ×<input className="input sm" type="number" step={0.1} min={1} style={{ width: 70 }} value={cfg.medalMultipliers.silver} onChange={(e) => setCfg({ ...cfg, medalMultipliers: { ...cfg.medalMultipliers, silver: Number(e.target.value) || 1.5 } })} />
-          금 = 동 ×<input className="input sm" type="number" step={0.1} min={1} style={{ width: 70 }} value={cfg.medalMultipliers.gold} onChange={(e) => setCfg({ ...cfg, medalMultipliers: { ...cfg.medalMultipliers, gold: Number(e.target.value) || 2 } })} />
         </div>
-        <div className="row small">
-          🗣️ 영어 동(인증) = 과제 <input className="input sm" type="number" min={1} max={4} style={{ width: 60 }} value={cfg.englishMedalTasks.bronze} onChange={(e) => setCfg({ ...cfg, englishMedalTasks: { ...cfg.englishMedalTasks, bronze: Number(e.target.value) || 2 } })} />개 ·
-          은 <input className="input sm" type="number" min={1} max={4} style={{ width: 60 }} value={cfg.englishMedalTasks.silver} onChange={(e) => setCfg({ ...cfg, englishMedalTasks: { ...cfg.englishMedalTasks, silver: Number(e.target.value) || 3 } })} />개 ·
-          금 <input className="input sm" type="number" min={1} max={4} style={{ width: 60 }} value={cfg.englishMedalTasks.gold} onChange={(e) => setCfg({ ...cfg, englishMedalTasks: { ...cfg.englishMedalTasks, gold: Number(e.target.value) || 4 } })} />개
-        </div>
-        <div className="stack" style={{ gap: 6 }}>
-          {cfg.englishTasks.map((t, i) => (
-            <label key={t.id} className="row small" style={{ gap: 6 }}>과제 {t.id.slice(1)} · {t.name} 완료 기준
-              <input className="input sm" type="number" min={1} style={{ width: 70 }} value={t.goal} onChange={(e) => setCfg({ ...cfg, englishTasks: cfg.englishTasks.map((x, j) => (j === i ? { ...x, goal: Math.max(1, Number(e.target.value) || 1) } : x)) })} />
-            </label>
-          ))}
-        </div>
+        <div><button className="btn" disabled={busy === "school"} onClick={() => run("school", async () => { await updateDoc(doc(db, sp(schoolId)), { principalName: principal.trim(), studentDomain: domain, joinPolicy, updatedAt: serverTimestamp() }); })}>학교 정보 저장</button></div>
       </Section>
 
-      <Section title="🤖 AI (Claude)">
-        <label className="row small" style={{ gap: 6 }}><input type="checkbox" checked={cfg.ai.enabled} onChange={(e) => setCfg({ ...cfg, ai: { ...cfg.ai, enabled: e.target.checked } })} /> AI 사진 1차 확인·피드백 사용</label>
+      <Section title="금·은·동 단계 (모든 증빙형 항목 공통)">
+        <div className="row small">
+          <PixelMedal medal="bronze" size={28} /> 동장 = 항목별 인증 기준(계획서) ·
+          <PixelMedal medal="silver" size={28} /> 은장 = 동 ×<input className="input sm" type="number" step={0.1} min={1} style={{ width: 70 }} value={cfg.medalMultipliers.silver} onChange={(e) => setCfg({ ...cfg, medalMultipliers: { ...cfg.medalMultipliers, silver: Number(e.target.value) || 1.5 } })} />
+          <PixelMedal medal="gold" size={28} /> 금장 = 동 ×<input className="input sm" type="number" step={0.1} min={1} style={{ width: 70 }} value={cfg.medalMultipliers.gold} onChange={(e) => setCfg({ ...cfg, medalMultipliers: { ...cfg.medalMultipliers, gold: Number(e.target.value) || 2 } })} />
+        </div>
+        <span className="small muted">항목별 기준 횟수·증빙·확인 방식은 [인증 항목]에서 바꿔요.</span>
+      </Section>
+
+      <Section title="AI (Claude) · 교사 업무 보조 전용">
+        <label className="row small" style={{ gap: 6 }}><input type="checkbox" checked={cfg.ai.enabled} onChange={(e) => setCfg({ ...cfg, ai: { ...cfg.ai, enabled: e.target.checked } })} /> 학생이 올린 사진·글을 AI가 1차로 보고 이상한 기록을 교사에게 표시 (학생에게는 AI 결과를 보여 주지 않아요)</label>
         <div className="row small">
           사진 확인 모델 <select className="input sm" value={cfg.ai.photoModel} onChange={(e) => setCfg({ ...cfg, ai: { ...cfg.ai, photoModel: e.target.value } })}><option value="claude-haiku-5-5">Claude Haiku 5.5 (저렴)</option><option value="claude-sonnet-5-5">Claude Sonnet 5.5</option><option value="claude-opus-5-5">Claude Opus 5.5</option></select>
           교사용 모델 <select className="input sm" value={cfg.ai.teacherModel} onChange={(e) => setCfg({ ...cfg, ai: { ...cfg.ai, teacherModel: e.target.value } })}><option value="claude-sonnet-5-5">Claude Sonnet 5.5</option><option value="claude-opus-5-5">Claude Opus 5.5</option><option value="claude-haiku-5-5">Claude Haiku 5.5</option></select>
@@ -141,7 +126,7 @@ export function Settings() {
         </div>
       </Section>
 
-      <Section title="🏅 인증서">
+      <Section title="인증서">
         <label className="field"><span>수여 날짜 (인증서·한글 출력에 표시)</span>
           <input className="input" value={cfg.certificate.issueDate} onChange={(e) => setCfg({ ...cfg, certificate: { ...cfg.certificate, issueDate: e.target.value } })} placeholder="2026년 12월 18일" />
         </label>
@@ -152,7 +137,7 @@ export function Settings() {
       </Section>
 
       <div className="submit-bar" style={{ marginBottom: 20 }}>
-        <button className="btn big" disabled={busy === "config"} onClick={saveConfig}>{busy === "config" ? "저장 중…" : "기준·AI·인증서 설정 저장"}</button>
+        <button className="btn big" disabled={busy === "config"} onClick={saveConfig}>{busy === "config" ? "저장 중…" : "단계·AI·인증서 설정 저장"}</button>
       </div>
 
       <DataTools busy={busy} run={run} />
@@ -166,7 +151,7 @@ function DataTools({ busy, run }: { busy: string | null; run: (label: string, fn
   const [g, setG] = useState(4);
   const [c, setC] = useState(1);
   return (
-    <Section title="🧪 데이터 도구">
+    <Section title="데이터 도구">
       <div className="row">
         <button className="btn secondary" disabled={!!busy} onClick={() => run("sets", async () => { const r = await call<{ written: string[] }>("seedSentenceSets", { schoolId, overwrite: false }); return r.written.length ? `영어 문장 세트 ${r.written.length}개를 올렸어요.` : "이미 올라가 있어요."; })}>영어 문장 세트 기본값 올리기</button>
         <button className="btn secondary" disabled={!!busy} onClick={() => run("recompute", async () => { const r = await call<{ students: number }>("recomputeAll", { schoolId }); return `학생 ${r.students}명 진행률을 다시 계산했어요.`; })}>진행률 다시 계산</button>
@@ -189,7 +174,7 @@ function NewYear() {
   const [busy, setBusy] = useState(false);
   const need = `${school.year} 마감`;
   return (
-    <Section title={`📅 새 학년도 시작 (${school.year} → ${school.year + 1})`}>
+    <Section title={`새 학년도 시작 (${school.year} → ${school.year + 1})`}>
       <ul className="small muted" style={{ margin: 0, paddingLeft: 18, lineHeight: 1.7 }}>
         <li>{school.year}학년도 명단과 최종 결과(금은동)를 학년도 보관함에 저장해요.</li>
         <li>제출 기록·사진·녹음은 지우지 않고 {school.year}학년도 기록으로 남아요.</li>

@@ -63,3 +63,26 @@ export function pickAudioMime() {
   if (typeof MediaRecorder === "undefined") return "";
   return candidates.find((m) => MediaRecorder.isTypeSupported(m)) ?? "";
 }
+
+/** 녹음 품질 점검(AI 없이): 길이와 소리가 있는 구간 비율. 무음 녹음을 교사에게 경고하는 데 쓴다 */
+export async function analyzeAudio(blob: Blob): Promise<{ durationSec: number; voicedRatio: number } | null> {
+  try {
+    const ctx = new AudioContext();
+    const buf = await ctx.decodeAudioData(await blob.arrayBuffer());
+    const data = buf.getChannelData(0);
+    const frame = Math.floor(buf.sampleRate * 0.05); // 50ms
+    let voiced = 0;
+    let frames = 0;
+    for (let i = 0; i + frame <= data.length; i += frame) {
+      let sum = 0;
+      for (let j = i; j < i + frame; j++) sum += data[j] * data[j];
+      const rms = Math.sqrt(sum / frame);
+      if (rms > 0.02) voiced++;
+      frames++;
+    }
+    ctx.close();
+    return { durationSec: Math.round(buf.duration), voicedRatio: frames ? Math.round((voiced / frames) * 100) / 100 : 0 };
+  } catch {
+    return null;
+  }
+}

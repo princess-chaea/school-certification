@@ -4,8 +4,8 @@ rules_version = '2';
 // - 모든 학교 데이터는 schools/{schoolId}/... 아래에 있다 (schoolId = NEIS 표준학교코드)
 // - 학생: 그 학교 명단(students/{이메일})에 있는 계정. 학년도(year)별로 기록 구분
 // - 교사·관리자: schools/{schoolId}/staff/{uid}, 그 학교 관리자 승인(status == 'active') 후 사용
-//   teacherType 'homeroom' = 담임(grade, classNo) / 'subject' = 전담·업무 담당(grades[], programs[])
-// - 플랫폼 운영자: superAdmins/{uid} (학교 개설 승인)
+//   역할은 겹칠 수 있다: role 'admin' = 학교 담당자, homeroom = 담임(grade, classNo), subject = 전담(grades[], programs[])
+// - 시스템 관리자: superAdmins/{uid}
 service cloud.firestore {
   match /databases/{database}/documents {
 
@@ -51,14 +51,14 @@ service cloud.firestore {
       function isAdmin() { return isSuper() || (isStaff() && staffDoc().role == 'admin'); }
       function isHomeroomOf(g, c) {
         let u = staffDoc();
-        return u.teacherType == 'homeroom' && u.grade == g && u.classNo == c;
+        return u.get('homeroom', false) == true && u.grade == g && u.classNo == c;
       }
       function isSubjectFor(g, program) {
         let u = staffDoc();
-        return u.teacherType == 'subject' && g in u.grades && program in u.programs;
+        return u.get('subject', false) == true && g in u.get('grades', []) && program in u.get('programs', []);
       }
       function canSeeClass(g, c) {
-        return isAdmin() || (isStaff() && (isHomeroomOf(g, c) || (staffDoc().teacherType == 'subject' && g in staffDoc().grades)));
+        return isAdmin() || (isStaff() && (isHomeroomOf(g, c) || (staffDoc().get('subject', false) == true && g in staffDoc().get('grades', []))));
       }
       function canManage(g, c, program) {
         return isAdmin() || (isStaff() && (isHomeroomOf(g, c) || isSubjectFor(g, program)));
@@ -66,7 +66,7 @@ service cloud.firestore {
 
       // 학교 정보(이름·로고·학교장)는 로그인 전후 화면에 쓰이므로 공개 읽기
       allow read: if true;
-      allow update: if isAdmin() && onlyChanges(['name', 'shortName', 'principalName', 'logoUrl', 'sealUrl', 'studentDomain', 'updatedAt']);
+      allow update: if isAdmin() && onlyChanges(['name', 'shortName', 'principalName', 'logoUrl', 'sealUrl', 'studentDomain', 'joinPolicy', 'updatedAt']);
       allow create, delete: if false;
 
       match /config/{docId} {
@@ -84,8 +84,8 @@ service cloud.firestore {
         allow create: if false;
         // 승인 대기 중에는 본인이 소속 정보만 수정 가능
         allow update: if isAdmin()
-          || (signedIn() && request.auth.uid == uid && resource.data.status == 'pending'
-              && onlyChanges(['name', 'teacherType', 'grade', 'classNo', 'grades', 'programs', 'updatedAt']));
+          || (signedIn() && request.auth.uid == uid
+              && onlyChanges(['name', 'homeroom', 'subject', 'grade', 'classNo', 'grades', 'programs', 'updatedAt']));
         allow delete: if isAdmin();
       }
 
@@ -107,16 +107,16 @@ service cloud.firestore {
         allow get, list: if (isStudent() && resource.data.sid == mySid())
           || canManage(resource.data.grade, resource.data.classNo, resource.data.program);
 
+        // 학생 제출은 항상 '확인 대기(pending)'로 들어가고, 자동 인정 항목은 Cloud Functions 가 바로 인정한다
         allow create: if isStudent()
           && request.resource.data.sid == mySid()
           && request.resource.data.year == currentYear()
           && request.resource.data.source == 'student'
-          && request.resource.data.status == 'active'
+          && request.resource.data.status == 'pending'
           && request.resource.data.count == 1
-          && request.resource.data.program in ['reading', 'carbon', 'english']
+          && request.resource.data.program is string && request.resource.data.program.size() <= 40
           && request.resource.data.grade == studentDoc().grade
-          && request.resource.data.classNo == studentDoc().classNo
-          && !('ai' in request.resource.data);
+          && request.resource.data.classNo == studentDoc().classNo;
 
         // 교사 일괄 체크(태블릿 없는 학생 관찰 기록)
         allow create: if isStaff()
@@ -126,15 +126,17 @@ service cloud.firestore {
           && request.resource.data.count is int && request.resource.data.count >= 1 && request.resource.data.count <= 100
           && canManage(request.resource.data.grade, request.resource.data.classNo, request.resource.data.program);
 
+        // 교사: 승인(active)·반려/제외(deleted)·복구
         allow update: if canManage(resource.data.grade, resource.data.classNo, resource.data.program)
-          && onlyChanges(['status', 'deletedBy', 'deletedAt', 'deleteReason', 'reviewedBy', 'reviewedAt', 'teacherComment']);
+          && request.resource.data.status in ['active', 'deleted', 'pending']
+          && onlyChanges(['status', 'deletedBy', 'deletedAt', 'deleteReason', 'reviewedBy', 'reviewedByName', 'reviewedAt', 'teacherComment']);
         allow delete: if isAdmin();
       }
 
-      // 영어 문장 연습 (과제 1·3)
+      // 문장 연습 (과제형 항목의 sentences 과제)
       match /englishItems/{id} {
         allow get, list: if (isStudent() && resource.data.sid == mySid())
-          || canManage(resource.data.grade, resource.data.classNo, 'english');
+          || canManage(resource.data.grade, resource.data.classNo, resource.data.program);
 
         allow create: if isStudent()
           && request.resource.data.sid == mySid()
@@ -142,6 +144,7 @@ service cloud.firestore {
           && id == string(currentYear()) + '_' + mySid() + '_' + request.resource.data.setId + '_' + string(request.resource.data.no)
           && request.resource.data.grade == studentDoc().grade
           && request.resource.data.classNo == studentDoc().classNo
+          && request.resource.data.program is string
           && request.resource.data.status in ['practicing', 'ready', 'requested']
           && !('checkedBy' in request.resource.data);
 
@@ -149,10 +152,16 @@ service cloud.firestore {
             && resource.data.status != 'checked'
             && request.resource.data.status in ['practicing', 'ready', 'requested']
             && onlyChanges(['rounds', 'status', 'custom', 'requestedAt', 'updatedAt']))
-          || (canManage(resource.data.grade, resource.data.classNo, 'english')
+          || (canManage(resource.data.grade, resource.data.classNo, resource.data.program)
             && request.resource.data.status in ['checked', 'retry', 'requested']
             && onlyChanges(['status', 'checkedBy', 'checkedByName', 'checkedAt', 'teacherNote', 'updatedAt']));
         allow delete: if isAdmin();
+      }
+
+      // AI 1차 판정 (교사 검토용, 학생은 읽을 수 없음 · Cloud Functions 전용 쓰기)
+      match /aiReviews/{id} {
+        allow get, list: if canManage(resource.data.grade, resource.data.classNo, resource.data.program);
+        allow write: if false;
       }
 
       // 학년도 보관함·AI 사용량 (Cloud Functions 전용)
@@ -170,10 +179,16 @@ service cloud.firestore {
       }
     }
 
-    // 학교 개설 신청 (Cloud Functions 가 생성, 운영자가 승인)
+    // 학교 개설 신청 (가입 방식이 '승인'일 때) · 기능 요청
     match /schoolRequests/{id} {
       allow read: if isSuper() || (signedIn() && resource.data.uid == request.auth.uid);
       allow write: if false;
+    }
+    match /featureRequests/{id} {
+      allow create: if signedIn() && request.resource.data.uid == request.auth.uid
+        && request.resource.data.text is string && request.resource.data.text.size() <= 2000;
+      allow read: if isSuper() || (signedIn() && resource.data.uid == request.auth.uid);
+      allow update, delete: if isSuper();
     }
   }
 }

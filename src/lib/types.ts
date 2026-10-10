@@ -1,5 +1,5 @@
 import type { Timestamp } from "firebase/firestore";
-import type { Medal, ProgramId, StudentProgress, EnglishTaskId } from "../../shared/domain";
+import type { Medal, ProgramId, StudentProgress } from "../../shared/domain";
 
 export interface StudentDoc {
   sid: string;
@@ -16,17 +16,20 @@ export interface StudentDoc {
   lastLoginAt?: Timestamp;
 }
 
+/** 교사·학교 담당자 (역할은 겹칠 수 있음) */
 export interface StaffDoc {
   uid: string;
-  role: "teacher" | "admin";
+  role: "teacher" | "admin"; // admin = 학교 담당자
   status: "pending" | "active" | "rejected";
   name: string;
   email: string;
-  teacherType: "homeroom" | "subject";
-  grade?: number;
-  classNo?: number;
+  homeroom?: boolean;
+  grade?: number | null;
+  classNo?: number | null;
+  subject?: boolean;
   grades?: number[];
-  programs?: ProgramId[];
+  programs?: string[];
+  requestedAdmin?: boolean;
   createdAt?: Timestamp;
 }
 
@@ -44,27 +47,30 @@ export interface Submission {
   id: string;
   sid: string;
   year: number;
-  activityDate?: string;
   grade: number;
   classNo: number;
   program: ProgramId;
-  task?: EnglishTaskId;
+  task?: string;
+  activityDate?: string;
   photoPath?: string;
+  filePath?: string;
+  fileName?: string;
   audioPath?: string;
   durationSec?: number;
-  bookTitle?: string;
+  audioCheck?: { durationSec: number; voicedRatio: number };
+  link?: string;
   text?: string;
   activityType?: string;
+  fields?: Record<string, string>;
   createdAt?: Timestamp;
-  status: "active" | "deleted";
+  status: "pending" | "active" | "deleted";
   source: "student" | "teacher";
   count: number;
   createdByName?: string;
+  reviewedByName?: string;
   deleteReason?: string;
   deletedBy?: string;
-  ai?: AiReview;
   isDemo?: boolean;
-  studentName?: string;
 }
 
 export interface EnglishRound {
@@ -84,8 +90,9 @@ export interface EnglishItem {
   year: number;
   grade: number;
   classNo: number;
+  program: string;
   setId: string;
-  task: "t1" | "t3";
+  task: string;
   no: number;
   custom?: { en: string; ko: string };
   rounds: EnglishRound[];

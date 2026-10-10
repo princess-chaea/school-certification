@@ -1,7 +1,7 @@
 import { onCall, HttpsError } from "firebase-functions/v2/https";
 import { db, REGION, FieldValue, requireStaff, requireSchoolId, loadConfig, loadSchool, sp } from "./common.js";
 import { recomputeStudent } from "./progress.js";
-import { englishTaskForGrade, type StudentProgress } from "./shared/domain.js";
+import { activePrograms, isCertified, taskSetIds, type StudentProgress } from "./shared/domain.js";
 import { studentIdFor, englishItemId, type RosterRow } from "./shared/roster.js";
 import task1 from "./shared/data/task1-cartoon.json" with { type: "json" };
 import task3g4 from "./shared/data/task3-grade4.json" with { type: "json" };
@@ -79,7 +79,7 @@ export const startNewYear = onCall({ region: REGION, timeoutSeconds: 540, memory
   if (confirm !== `${oldYear} 마감`) throw new HttpsError("failed-precondition", `확인 문구 "${oldYear} 마감"을 정확히 입력하세요.`);
 
   const students = await db.collection(sp(schoolId, "students")).get();
-  const summary = { students: 0, participants: 0, certified: { reading: 0, carbon: 0, english: 0, any: 0 } };
+  const summary: { students: number; participants: number; certifiedAny: number; certified: Record<string, number> } = { students: 0, participants: 0, certifiedAny: 0, certified: {} };
   let batch = db.batch();
   let n = 0;
   const flush = async () => {
@@ -93,14 +93,18 @@ export const startNewYear = onCall({ region: REGION, timeoutSeconds: 540, memory
       batch.delete(d.ref);
     } else {
       const p = (s.progress ?? {}) as StudentProgress;
-      const participated = (p.reading?.count ?? 0) + (p.carbon?.count ?? 0) + (p.english?.completed ?? 0) > 0;
-      const cert = (m?: string) => m === "bronze" || m === "silver" || m === "gold";
+      const entries = Object.entries(p);
+      const participated = entries.some(([, v]) => (v?.count ?? 0) > 0);
       summary.students++;
       if (participated) summary.participants++;
-      if (cert(p.reading?.medal)) summary.certified.reading++;
-      if (cert(p.carbon?.medal)) summary.certified.carbon++;
-      if (cert(p.english?.medal)) summary.certified.english++;
-      if (cert(p.reading?.medal) || cert(p.carbon?.medal) || cert(p.english?.medal)) summary.certified.any++;
+      let any = false;
+      for (const [id, v] of entries) {
+        if (isCertified(v?.medal)) {
+          summary.certified[id] = (summary.certified[id] ?? 0) + 1;
+          any = true;
+        }
+      }
+      if (any) summary.certifiedAny++;
       batch.set(db.doc(sp(schoolId, `years/${oldYear}/students/${d.id}`)), { ...s, archivedAt: FieldValue.serverTimestamp() });
       batch.delete(d.ref);
       if (s.email) batch.delete(db.doc(`studentIndex/${s.email}`));
@@ -120,10 +124,11 @@ export const startNewYear = onCall({ region: REGION, timeoutSeconds: 540, memory
     closedAt: FieldValue.serverTimestamp(),
   });
 
-  const teachers = await db.collection(sp(schoolId, "staff")).where("role", "==", "teacher").get();
+  const teachers = await db.collection(sp(schoolId, "staff")).where("homeroom", "==", true).get();
   for (const t of teachers.docs) {
-    if (t.get("teacherType") === "homeroom" && t.get("status") === "active") {
-      batch.update(t.ref, { status: "pending", previousClass: `${t.get("grade")}-${t.get("classNo")}` });
+    if (t.get("status") === "active") {
+      // 새 학년도: 담임 학급을 다시 고르도록 담임 정보만 비운다 (학교 담당자 권한은 유지)
+      batch.update(t.ref, { homeroom: false, grade: null, classNo: null, previousClass: `${t.get("grade")}-${t.get("classNo")}` });
       if (++n >= 400) await flush();
     }
   }
@@ -181,6 +186,10 @@ export const seedDemo = onCall({ region: REGION, timeoutSeconds: 540, memory: "5
       n = 0;
     }
   };
+  const flushMaybe = async () => {
+    n++;
+    await flush();
+  };
   const sids: string[] = [];
 
   for (const { grade, classNo } of targets) {
@@ -199,56 +208,63 @@ export const seedDemo = onCall({ region: REGION, timeoutSeconds: 540, memory: "5
       const effort = Math.random();
       if (effort < 0.08) continue; // 미참여 학생
       const base = { sid, grade, classNo, year, status: "active", source: "student", count: 1, isDemo: true, seed: true };
-      const readingBase = Number(config.programs.reading.baseByGrade?.[String(grade)] ?? 30);
-      const readingN = Math.round(readingBase * Math.min(2.1, effort * 1.6 + Math.random() * 0.4));
-      for (let i = 0; i < readingN; i++) {
-        const at = randomDate(200);
-        batch.set(db.collection(sp(schoolId, "submissions")).doc(), { ...base, program: "reading", bookTitle: rand(BOOKS), createdAt: at, activityDate: dateKey(at),
-          ai: { verdict: Math.random() < 0.94 ? "ok" : "check", reason: "시연용 데이터", feedback: "꾸준히 읽는 모습이 멋져! 📚", model: "demo" } });
-        n++;
-        await flush();
-      }
-      const carbonN = Math.round(20 * Math.min(2.1, effort * 1.5 + Math.random() * 0.4));
-      for (let i = 0; i < carbonN; i++) {
-        const idx = randInt(0, CARBON_TYPES.length - 1);
-        const at = randomDate(200);
-        batch.set(db.collection(sp(schoolId, "submissions")).doc(), { ...base, program: "carbon", activityType: CARBON_TYPES[idx], text: CARBON_TEXTS[idx], createdAt: at, activityDate: dateKey(at),
-          ai: { verdict: "ok", reason: "시연용 데이터", feedback: "지구가 고마워할 거야! 🌏", model: "demo" } });
-        n++;
-        await flush();
-      }
-      if (config.programs.english.grades.includes(grade)) {
-        const t3 = englishTaskForGrade(config.englishTasks.find((t) => t.id === "t3")!, grade);
-        const plan: Array<[string, string, number]> = [
-          ["t1", "task1-cartoon", Math.round(30 * Math.min(1, effort * 1.3))],
-          ["t3", t3.setIds![0], Math.round(40 * Math.min(1, effort * 1.1))],
-        ];
-        for (const [task, setId, done] of plan) {
-          const items = (sets[setId]?.items ?? []).filter((it) => it.type !== "student").slice(0, done + 2);
-          items.forEach((it, i) => {
-            const checked = i < done;
-            batch.set(db.doc(sp(schoolId, `englishItems/${englishItemId(year, sid, setId, it.no)}`)), {
-              sid, grade, classNo, year, setId, task, no: it.no, isDemo: true, seed: true,
-              rounds: [1, 2, 3].map(() => ({ typedOk: true, attempts: randInt(1, 2), durationMs: randInt(1500, 4000) })),
-              status: checked ? "checked" : "requested",
-              requestedAt: randomDate(60),
-              ...(checked ? { checkedByName: "영어 선생님", checkedAt: randomDate(30) } : {}),
-              updatedAt: FieldValue.serverTimestamp(),
+      for (const p of activePrograms(config, grade)) {
+        if (p.kind === "evidence") {
+          const target = Number(p.targetByGrade?.[String(grade)] ?? 10);
+          const cnt = Math.round(target * Math.min(2.1, effort * 1.6 + Math.random() * 0.4));
+          for (let i = 0; i < cnt; i++) {
+            const at = randomDate(200);
+            const choice = p.choices?.length ? randInt(0, Math.min(p.choices.length, CARBON_TYPES.length) - 1) : -1;
+            const fields: Record<string, string> = {};
+            for (const f of p.fields ?? []) fields[f.key] = f.key === "bookTitle" ? rand(BOOKS) : `${f.label} 예시`;
+            const ref = db.collection(sp(schoolId, "submissions")).doc();
+            const pending = i >= cnt - 2 && p.approval === "teacher"; // 마지막 2건은 교사 확인 대기
+            batch.set(ref, {
+              ...base, status: pending ? "pending" : "active", program: p.id, createdAt: at, activityDate: dateKey(at), fields,
+              ...(choice >= 0 ? { activityType: p.choices![choice], text: CARBON_TEXTS[choice] ?? "열심히 실천했어요." } : {}),
             });
-            n++;
-          });
-          await flush();
+            if (pending) {
+              const v = Math.random();
+              batch.set(db.doc(sp(schoolId, `aiReviews/${ref.id}`)), {
+                sid, year, grade, classNo, program: p.id, isDemo: true, model: "demo",
+                verdict: v < 0.8 ? "ok" : v < 0.95 ? "check" : "reject",
+                reason: v < 0.8 ? "활동 증빙이 사진에서 확인돼요 (시연)" : v < 0.95 ? "사진이 흐려 활동 확인이 어려워요 (시연)" : "활동과 관계없는 사진 같아요 (시연)",
+              });
+              n++;
+            }
+            await flushMaybe();
+          }
+        } else {
+          for (const t of p.tasks ?? []) {
+            const done = Math.round(t.goal * Math.min(1, effort * (t.kind === "sentences" ? 1.2 : 1.4) - Math.random() * 0.2));
+            if (t.kind === "sentences") {
+              const setId = taskSetIds(t, grade)[0];
+              const items = (sets[setId]?.items ?? []).filter((it) => it.type !== "student").slice(0, Math.max(0, done) + 2);
+              items.forEach((it, i) => {
+                const checked = i < done;
+                batch.set(db.doc(sp(schoolId, `englishItems/${englishItemId(year, sid, setId, it.no)}`)), {
+                  sid, grade, classNo, year, program: p.id, setId, task: t.id, no: it.no, isDemo: true, seed: true,
+                  rounds: [1, 2, 3].map(() => ({ typedOk: true, attempts: randInt(1, 2), durationMs: randInt(1500, 4000) })),
+                  status: checked ? "checked" : "requested",
+                  requestedAt: randomDate(60),
+                  ...(checked ? { checkedByName: "영어 선생님", checkedAt: randomDate(30) } : {}),
+                  updatedAt: FieldValue.serverTimestamp(),
+                });
+                n++;
+              });
+            } else {
+              for (let i = 0; i < Math.max(0, done); i++) {
+                batch.set(db.collection(sp(schoolId, "submissions")).doc(), {
+                  ...base, program: p.id, task: t.id, createdAt: randomDate(90),
+                  ...(t.minAudioSec ? { durationSec: t.minAudioSec + randInt(1, 60) } : {}),
+                  fields: Object.fromEntries((t.fields ?? []).map((f) => [f.key, `Fun Reading Book ${i + 1}`])),
+                });
+                n++;
+              }
+            }
+            await flush();
+          }
         }
-        if (effort > 0.4) {
-          batch.set(db.collection(sp(schoolId, "submissions")).doc(), { ...base, program: "english", task: "t2", createdAt: randomDate(90) });
-          n++;
-        }
-        const t4n = effort > 0.6 ? randInt(2, 4) : effort > 0.3 ? randInt(0, 2) : 0;
-        for (let i = 0; i < t4n; i++) {
-          batch.set(db.collection(sp(schoolId, "submissions")).doc(), { ...base, program: "english", task: "t4", bookTitle: `Fun Reading Book ${i + 1}`, durationSec: randInt(121, 180), createdAt: randomDate(90) });
-          n++;
-        }
-        await flush();
       }
     }
   }
@@ -261,7 +277,7 @@ export const clearDemo = onCall({ region: REGION, timeoutSeconds: 540 }, async (
   const schoolId = requireSchoolId(req.data);
   await requireStaff(req, schoolId, true);
   let deleted = 0;
-  for (const col of ["submissions", "englishItems", "students"]) {
+  for (const col of ["submissions", "englishItems", "students", "aiReviews"]) {
     for (;;) {
       const snap = await db.collection(col).where("isDemo", "==", true).limit(400).get();
       if (snap.empty) break;

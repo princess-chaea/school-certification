@@ -1,13 +1,16 @@
 import { useMemo, useState } from "react";
 import { doc, limit, orderBy, serverTimestamp, updateDoc, where, type QueryConstraint } from "firebase/firestore";
 import { db } from "../../firebase";
-import { useCollection } from "../../lib/data";
+import { useAiReviews, useCollection } from "../../lib/data";
+import { AiChip } from "./Review";
 import { sp, useSchoolId } from "../../lib/tenant";
 import { useConfig } from "../../lib/config";
 import { useSchool } from "../../lib/school";
 import type { Submission } from "../../lib/types";
 import { fmtDate, fmtDateTime } from "../../lib/format";
-import { Empty, Lightbox, StorageAudio, StorageImage, toast } from "../../components/ui";
+import { Empty, Lightbox, StorageAudio, StorageImage, StorageLink, toast } from "../../components/ui";
+import { PixelIcon } from "../../components/Pixel";
+import { programById } from "../../../shared/domain";
 import { PageHeader } from "../../components/Layout";
 import { ScopeBar, useScope } from "./scope";
 import { useScopedStudents } from "./Overview";
@@ -35,8 +38,10 @@ export function Feed() {
   const { rows, error } = useCollection<Submission>(sp(schoolId, "submissions"), cons, [schoolId, school.year, scope.grade, scope.classNo, scope.program, max]);
 
   const names = useMemo(() => new Map((students ?? []).map((s) => [s.id, `${s.classNo}-${s.number} ${s.name}`])), [students]);
-  const list = (rows ?? []).filter((r) => (showDeleted ? true : r.status !== "deleted")).filter((r) => (onlySuspect ? r.ai && r.ai.verdict !== "ok" : true));
-  const suspectCount = (rows ?? []).filter((r) => r.status === "active" && r.ai && r.ai.verdict !== "ok").length;
+  const ai = useAiReviews((rows ?? []).map((r) => r.id));
+  const suspect = (id: string) => Boolean(ai.get(id) && ai.get(id)!.verdict !== "ok");
+  const list = (rows ?? []).filter((r) => (showDeleted ? true : r.status !== "deleted")).filter((r) => (onlySuspect ? suspect(r.id) : true));
+  const suspectCount = (rows ?? []).filter((r) => r.status !== "deleted" && suspect(r.id)).length;
 
   async function remove(id: string) {
     await updateDoc(doc(db, sp(schoolId, `submissions/${id}`)), { status: "deleted", deletedBy: staff.name, deletedAt: serverTimestamp(), deleteReason: reason.trim() || "비정상 기록" });
@@ -52,11 +57,11 @@ export function Feed() {
   return (
     <div className="page">
       <Lightbox url={zoom} onClose={() => setZoom(null)} />
-      <PageHeader title="📥 제출 기록" />
+      <PageHeader icon="log" title="기록" />
       <ScopeBar />
       <div className="row" style={{ marginBottom: 12 }}>
-        <button className={`choice ${onlySuspect ? "on" : ""}`} onClick={() => setOnlySuspect((v) => !v)}>⚠️ AI가 확인 요청한 기록만 {suspectCount ? `(${suspectCount})` : ""}</button>
-        <button className={`choice ${showDeleted ? "on" : ""}`} onClick={() => setShowDeleted((v) => !v)}>🗑️ 제외한 기록도 보기</button>
+        <button className={`choice ${onlySuspect ? "on" : ""}`} onClick={() => setOnlySuspect((v) => !v)}><PixelIcon name="alert" size={16} /> AI가 확인 요청한 기록만 {suspectCount ? `(${suspectCount})` : ""}</button>
+        <button className={`choice ${showDeleted ? "on" : ""}`} onClick={() => setShowDeleted((v) => !v)}><PixelIcon name="trash" size={16} /> 제외·반려한 기록도 보기</button>
       </div>
       {error && <div className="chip red">불러오지 못했어요: {error}</div>}
       <div className="stack">
@@ -64,27 +69,26 @@ export function Feed() {
         {rows && list.length === 0 && <Empty>기록이 없어요.</Empty>}
         {list.map((r) => (
           <div key={r.id} className={`card flat sub-card ${r.status === "deleted" ? "deleted" : ""}`}>
-            {r.photoPath ? <StorageImage path={r.photoPath} onOpen={setZoom} /> : <div className="thumb">{r.audioPath ? "🎙️" : r.source === "teacher" ? "👀" : config.programs[r.program].emoji}</div>}
+            {r.photoPath ? <StorageImage path={r.photoPath} onOpen={setZoom} /> : <div className="thumb"><PixelIcon name={r.audioPath ? "mic" : r.source === "teacher" ? "eye" : programById(config, r.program)?.icon ?? "star"} size={32} /></div>}
             <div className="stack" style={{ gap: 4, minWidth: 0 }}>
               <div className="row between">
                 <b>{names.get(r.sid) ?? r.sid} {r.isDemo && <span className="chip demo">예시</span>}</b>
                 <span className="tiny">활동 {r.activityDate ? fmtDate(new Date(r.activityDate)) : fmtDate(r.createdAt)} · 올림 {fmtDateTime(r.createdAt)}</span>
               </div>
-              <div className="small">
-                {config.programs[r.program].emoji}{" "}
-                {r.program === "reading" ? r.bookTitle || "독서기록" : r.program === "carbon" ? r.activityType || "탄소중립" : r.task === "t4" ? `펀리딩 낭독 ${r.bookTitle ?? ""} (${r.durationSec ?? 0}초)` : "알공 완료"}
-                {r.source === "teacher" && <span className="chip" style={{ marginLeft: 6 }}>교사 관찰 {r.count}회 · {r.createdByName}</span>}
+              <div className="small icon-text">
+                <PixelIcon name={programById(config, r.program)?.icon ?? "star"} size={16} /> {programById(config, r.program)?.name ?? r.program}
+                {r.task ? ` · ${programById(config, r.program)?.tasks?.find((t) => t.id === r.task)?.name ?? r.task}` : ""}
+                {r.activityType && <span className="chip gray">{r.activityType}</span>}
+                {r.status === "pending" && <span className="chip warn">확인 대기</span>}
+                {r.status === "active" && r.reviewedByName && <span className="chip ok">인정 · {r.reviewedByName}</span>}
+                {r.source === "teacher" && <span className="chip">교사 관찰 {r.count}회 · {r.createdByName}</span>}
               </div>
+              {Object.entries(r.fields ?? {}).filter(([, v]) => v).map(([k, v]) => <div key={k} className="small"><span className="muted">{k}:</span> {v}</div>)}
               {r.text && <div className="small muted">“{r.text}”</div>}
+              {r.link && <a className="small" href={r.link} target="_blank" rel="noreferrer">{r.link}</a>}
+              <StorageLink path={r.filePath} name={r.fileName} />
               {r.audioPath && <StorageAudio path={r.audioPath} />}
-              {r.ai && (
-                <div className="small">
-                  <span className={`chip ${r.ai.verdict === "ok" ? "ok" : r.ai.verdict === "check" ? "warn" : "red"}`}>
-                    AI {r.ai.verdict === "ok" ? "확인됨" : r.ai.verdict === "check" ? "선생님 확인 필요" : "관련 없는 사진 같아요"}
-                  </span>{" "}
-                  <span className="muted">{r.ai.reason}</span>
-                </div>
-              )}
+              {ai.get(r.id) && <AiChip review={ai.get(r.id)!} />}
               {r.status === "deleted" ? (
                 <div className="row">
                   <span className="chip red">제외됨: {r.deleteReason} ({r.deletedBy})</span>
@@ -97,7 +101,7 @@ export function Feed() {
                   <button className="btn ghost sm" onClick={() => setDeleting(null)}>취소</button>
                 </div>
               ) : (
-                <div><button className="btn ghost sm" onClick={() => { setDeleting(r.id); setReason(""); }}>🗑️ 비정상 기록 제외</button></div>
+                <div><button className="btn ghost sm" onClick={() => { setDeleting(r.id); setReason(""); }}><PixelIcon name="trash" size={14} /> 비정상 기록 제외</button></div>
               )}
             </div>
           </div>

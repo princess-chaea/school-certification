@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { collection, doc, onSnapshot, orderBy, query, where, limit as qLimit, type QueryConstraint } from "firebase/firestore";
+import { collection, doc, getDoc, onSnapshot, orderBy, query, where, limit as qLimit, type QueryConstraint } from "firebase/firestore";
 import { db } from "../firebase";
 import { sp, useSchoolId } from "./tenant";
 import type { EnglishItem, SentenceSet, Submission, StudentDoc } from "./types";
@@ -75,3 +75,33 @@ export function useGradeStudents(grade: number | null) {
 }
 
 export { qLimit };
+
+/** 교사 전용 AI 1차 판정 (aiReviews/{제출ID}) — 목록에 보이는 기록만 개별로 읽는다 */
+export function useAiReviews(ids: string[]) {
+  const schoolId = useSchoolId();
+  const [map, setMap] = useState<Map<string, AiReviewDoc>>(new Map());
+  const key = ids.join(",");
+  useEffect(() => {
+    let alive = true;
+    if (!ids.length) {
+      setMap(new Map());
+      return;
+    }
+    Promise.all(ids.map((id) => getDoc(doc(db, sp(schoolId, `aiReviews/${id}`))).then((s) => [id, s.exists() ? (s.data() as AiReviewDoc) : null] as const).catch(() => [id, null] as const))).then((pairs) => {
+      if (!alive) return;
+      setMap(new Map(pairs.filter(([, v]) => v).map(([id, v]) => [id, v!])));
+    });
+    return () => {
+      alive = false;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [schoolId, key]);
+  return map;
+}
+
+export interface AiReviewDoc {
+  verdict: "ok" | "check" | "reject";
+  reason: string;
+  activityType?: string | null;
+  model?: string;
+}

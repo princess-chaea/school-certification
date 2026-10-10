@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Navigate, Route, Routes, useParams } from "react-router-dom";
+import { Navigate, Route, Routes } from "react-router-dom";
 import { AuthProvider, useSession } from "./lib/auth";
 import { SchoolProvider, useSchool } from "./lib/school";
 import { ConfigProvider } from "./lib/config";
@@ -9,10 +9,7 @@ import { PendingApproval, TeacherSignup } from "./pages/TeacherSignup";
 import { SuperConsole } from "./pages/SuperConsole";
 import { Layout } from "./components/Layout";
 import { Loading, ToastHost } from "./components/ui";
-import { StudentHome } from "./pages/student/StudentHome";
-import { SubmitPage } from "./pages/student/SubmitPage";
-import { EnglishRoom, SentenceSetPage } from "./pages/student/EnglishRoom";
-import { SentencePractice } from "./pages/student/SentencePractice";
+import { StudentHome, ProgramList, ProgramPage, CertificateList } from "./pages/student/Programs";
 import { Records } from "./pages/student/Records";
 import { CertificatePage } from "./pages/student/CertificatePage";
 import { StaffApp } from "./pages/teacher/StaffApp";
@@ -34,7 +31,7 @@ function Gate() {
   if (s.kind === "loading") return <Loading label="학교를 찾는 중…" />;
   if (s.kind === "signedOut") return <Login />;
   if ((s.kind === "staffNew" || s.kind === "staff") && s.isSuper && superMode) return <SuperConsole onBack={() => setSuperMode(false)} />;
-  if (s.kind === "staffNew") return <TeacherSignup user={s.user} request={s.request} isSuper={s.isSuper} onSuper={() => setSuperMode(true)} />;
+  if (s.kind === "staffNew") return <TeacherSignup user={s.user} isSuper={s.isSuper} onSuper={() => setSuperMode(true)} />;
   const schoolId = s.schoolId;
   return (
     <TenantCtx.Provider value={schoolId}>
@@ -59,35 +56,26 @@ function PendingWithSchool({ staff, user }: { staff: StaffDoc; user: User }) {
 }
 
 function StudentApp({ student }: { student: StudentDoc }) {
-  const english = student.grade >= 4;
+  // 모든 학교 공통 학생 탭 (학교별 인증 항목은 [인증하기] 안에서 보여 줌)
   const tabs = [
-    { to: "/", icon: "🏠", label: "나의 도전", end: true },
-    { to: "/submit/reading", icon: "📚", label: "독서" },
-    { to: "/submit/carbon", icon: "🌏", label: "탄소중립" },
-    ...(english ? [{ to: "/english", icon: "🗣️", label: "영어" }] : []),
-    { to: "/records", icon: "📒", label: "내 기록" },
+    { to: "/", icon: "home", label: "홈", end: true },
+    { to: "/do", icon: "plus", label: "인증하기" },
+    { to: "/records", icon: "log", label: "내 기록" },
+    { to: "/certs", icon: "trophy", label: "인증서" },
   ];
   return (
     <Layout who={`${student.grade}-${student.classNo} ${student.name}`} tabs={tabs}>
       <Routes>
         <Route path="/" element={<StudentHome student={student} />} />
-        <Route path="/submit/:kind" element={<SubmitPage student={student} />} />
-        <Route path="/english" element={<EnglishRoom student={student} />} />
-        <Route path="/english/set/:setId" element={<SetRoute student={student} />} />
-        <Route path="/english/set/:setId/:no" element={<PracticeRoute student={student} />} />
+        <Route path="/do" element={<ProgramList student={student} />} />
+        <Route path="/do/:programId" element={<ProgramPage student={student} />} />
+        <Route path="/do/:programId/:taskId" element={<ProgramPage student={student} />} />
+        <Route path="/do/:programId/:taskId/:no" element={<ProgramPage student={student} />} />
         <Route path="/records" element={<Records student={student} />} />
-        <Route path="/cert/:program" element={<CertificatePage student={student} />} />
+        <Route path="/certs" element={<CertificateList student={student} />} />
+        <Route path="/certs/:program" element={<CertificatePage student={student} />} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
     </Layout>
   );
-}
-
-function SetRoute({ student }: { student: StudentDoc }) {
-  const { setId = "" } = useParams();
-  return <SentenceSetPage student={student} setId={setId} />;
-}
-function PracticeRoute({ student }: { student: StudentDoc }) {
-  const { setId = "", no = "1" } = useParams();
-  return <SentencePractice student={student} setId={setId} no={Number(no)} />;
 }

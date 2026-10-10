@@ -1,4 +1,5 @@
 import type { AppConfig, ProgramId } from "../../shared/domain";
+import { programById } from "../../shared/domain";
 import { principalTitle } from "../../shared/school";
 import type { StudentDoc } from "../lib/types";
 import { useSchool } from "../lib/school";
@@ -17,7 +18,7 @@ export function HwpxCertificate({ config, program, student }: { config: AppConfi
           <div>
             인증분야:
             <br />
-            {config.programs[program].name}
+            {programById(config, program)?.name ?? program}
           </div>
           <div className="r">
             {school.name}

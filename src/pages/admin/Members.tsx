@@ -10,6 +10,9 @@ import { PageHeader } from "../../components/Layout";
 import { Empty, toast } from "../../components/ui";
 import { parseRosterCsv, ROSTER_TEMPLATE, type RosterRow } from "../../../shared/roster";
 import { classesOf, GRADES } from "../../lib/classes";
+import { useConfig } from "../../lib/config";
+import { programById } from "../../../shared/domain";
+import { PixelIcon } from "../../components/Pixel";
 
 function download(name: string, text: string, type = "text/csv;charset=utf-8") {
   const url = URL.createObjectURL(new Blob([text], { type }));
@@ -24,11 +27,11 @@ export function Members() {
   const [tab, setTab] = useState<"staff" | "roster" | "students">("staff");
   return (
     <div className="page">
-      <PageHeader title="👥 구성원 관리" />
+      <PageHeader icon="users" title="구성원 관리" />
       <div className="row" style={{ marginBottom: 14 }}>
-        <button className={`choice ${tab === "staff" ? "on" : ""}`} onClick={() => setTab("staff")}>👩‍🏫 교사 승인·권한</button>
-        <button className={`choice ${tab === "roster" ? "on" : ""}`} onClick={() => setTab("roster")}>📄 학생 명단 CSV</button>
-        <button className={`choice ${tab === "students" ? "on" : ""}`} onClick={() => setTab("students")}>🧒 학급별 학생</button>
+        <button className={`choice ${tab === "staff" ? "on" : ""}`} onClick={() => setTab("staff")}><PixelIcon name="users" size={16} /> 교사·담당자</button>
+        <button className={`choice ${tab === "roster" ? "on" : ""}`} onClick={() => setTab("roster")}><PixelIcon name="file" size={16} /> 학생 명단 CSV</button>
+        <button className={`choice ${tab === "students" ? "on" : ""}`} onClick={() => setTab("students")}><PixelIcon name="school" size={16} /> 학급별 학생</button>
       </div>
       {tab === "staff" && <StaffManager />}
       {tab === "roster" && <RosterUpload />}
@@ -42,7 +45,8 @@ function StaffManager() {
   const { rows } = useCollection<StaffDoc & { id: string }>(sp(schoolId, "staff"), [], [schoolId]);
   const list = (rows ?? []).sort((a, b) => (a.status === "pending" ? -1 : 0) - (b.status === "pending" ? -1 : 0) || (a.grade ?? 9) - (b.grade ?? 9) || (a.classNo ?? 0) - (b.classNo ?? 0));
   const pending = list.filter((s) => s.status === "pending");
-  const label = (s: StaffDoc) => (s.teacherType === "homeroom" ? `${s.grade}학년 ${s.classNo}반 담임` : `전담 · ${s.grades?.join("·")}학년 · ${(s.programs ?? []).map((p) => ({ reading: "독서", carbon: "탄소중립", english: "영어" })[p]).join(", ")}`);
+  const config = useConfig();
+  const label = (s: StaffDoc) => [s.homeroom && `${s.grade}학년 ${s.classNo}반 담임`, s.subject && `전담 ${s.grades?.join("·")}학년 (${(s.programs ?? []).map((p) => programById(config, p)?.name ?? p).join(", ")})`].filter(Boolean).join(" · ") || "-";
   async function set(id: string, patch: Record<string, unknown>) {
     await updateDoc(doc(db, sp(schoolId, `staff/${id}`)), patch);
   }
@@ -61,12 +65,12 @@ function StaffManager() {
                 <td>{label(s)}</td>
                 <td className="small">{s.email}</td>
                 <td>{s.status === "active" ? <span className="chip ok">승인</span> : s.status === "pending" ? <span className="chip warn">대기</span> : <span className="chip red">반려</span>}</td>
-                <td>{s.role === "admin" ? <span className="chip">관리자</span> : "교사"}</td>
+                <td>{s.role === "admin" ? <span className="chip">학교 담당자</span> : "교사"}{s.requestedAdmin && s.role !== "admin" ? <span className="chip warn">담당자 신청</span> : null}</td>
                 <td>
                   <div className="row" style={{ gap: 6, flexWrap: "nowrap" }}>
                     {s.status !== "active" && <button className="btn ok sm" onClick={() => set(s.id, { status: "active" })}>승인</button>}
                     {s.status === "pending" && <button className="btn ghost sm" onClick={() => set(s.id, { status: "rejected" })}>반려</button>}
-                    {s.status === "active" && <button className="btn ghost sm" onClick={() => set(s.id, { role: s.role === "admin" ? "teacher" : "admin" })}>{s.role === "admin" ? "관리자 해제" : "관리자 지정"}</button>}
+                    {s.status === "active" && <button className="btn ghost sm" onClick={() => set(s.id, { role: s.role === "admin" ? "teacher" : "admin" })}>{s.role === "admin" ? "담당자 해제" : "담당자 지정"}</button>}
                     <button className="btn ghost sm" onClick={async () => { if (confirm(`${s.name} 선생님을 삭제할까요?`)) await deleteDoc(doc(db, sp(schoolId, `staff/${s.id}`))); }}>삭제</button>
                   </div>
                 </td>
@@ -125,8 +129,8 @@ function RosterUpload() {
           <li>CSV(쉼표로 구분)로 저장해서 올려요. 이미 있는 학생은 학년·반·이름이 갱신돼요.</li>
         </ol>
         <div className="row">
-          <button className="btn secondary" onClick={() => download("학생명단_양식.csv", ROSTER_TEMPLATE)}>⬇️ 양식 내려받기</button>
-          <button className="btn" onClick={() => fileRef.current?.click()}>⬆️ CSV 파일 고르기</button>
+          <button className="btn secondary" onClick={() => download("학생명단_양식.csv", ROSTER_TEMPLATE)}><PixelIcon name="download" size={16} /> 양식 내려받기</button>
+          <button className="btn" onClick={() => fileRef.current?.click()}><PixelIcon name="upload" size={16} /> CSV 파일 고르기</button>
           <input ref={fileRef} type="file" accept=".csv,text/csv,.txt" hidden onChange={(e) => { onFile(e.target.files?.[0]); e.target.value = ""; }} />
         </div>
       </div>
@@ -180,7 +184,7 @@ function ClassRoster() {
                 <td className="num">{s.number}</td>
                 <td><b>{s.name}</b> {s.isDemo && <span className="chip demo">예시</span>}</td>
                 <td className="small">{s.email || "(계정 없음)"}</td>
-                <td>{s.hasAccount ? "✅" : "-"}</td>
+                <td>{s.hasAccount ? <PixelIcon name="check" size={16} /> : "-"}</td>
                 <td>{s.active === false ? "비활성" : "활성"}</td>
                 <td>
                   <div className="row" style={{ gap: 6, flexWrap: "nowrap" }}>

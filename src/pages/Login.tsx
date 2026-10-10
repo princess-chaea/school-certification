@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { login } from "../lib/auth";
+import { PixelIcon, PixelMedal } from "../components/Pixel";
 
 /** 모든 학교 공통 첫 화면 */
 export function Login() {
@@ -21,9 +22,9 @@ export function Login() {
 
   return (
     <div className="login">
-      <button className="signup-corner" onClick={go} disabled={busy}>👩‍🏫 선생님 가입·학교 개설</button>
+      <button className="signup-corner" onClick={go} disabled={busy}><PixelIcon name="users" size={18} /> 선생님 가입</button>
       <div className="card stack" style={{ alignItems: "center" }}>
-        <div className="login-mark" aria-hidden="true">🏅</div>
+        <div className="login-mark" aria-hidden="true"><PixelMedal medal="gold" size={64} /></div>
         <h1 style={{ margin: "6px 0 0", fontSize: "2.1rem" }}>학교장 인증제</h1>
         <div className="muted">도전! 꿈 성취</div>
         <div className="small muted" style={{ margin: "8px 0 4px", lineHeight: 1.6 }}>
@@ -41,7 +42,7 @@ export function Login() {
         <div className="tiny" style={{ lineHeight: 1.6 }}>
           학생: 학교에서 받은 구글 계정으로 로그인하면 우리 학교 페이지로 바로 들어가요.
           <br />
-          선생님: 개인 Google 계정으로 가입하고 학교 관리자의 승인을 받아요.
+          선생님: 오른쪽 위 [선생님 가입]에서 학교를 고르고 역할(학교 담당자·담임·전담)을 선택해요.
         </div>
         {err && <div className="chip red">{err}</div>}
       </div>

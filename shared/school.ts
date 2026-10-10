@@ -9,6 +9,7 @@ export interface SchoolInfo {
   logoUrl: string; // 공개 URL 또는 /logo.png
   sealUrl: string; // 직인 이미지
   neis?: NeisSchool;
+  joinPolicy?: "open" | "approval";
   setupAt?: unknown;
 }
 

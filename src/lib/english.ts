@@ -23,10 +23,10 @@ export function completedRounds(item?: EnglishItem) {
 
 export function statusLabel(status?: EnglishItem["status"]) {
   switch (status) {
-    case "checked": return "✅ 통과";
-    case "requested": return "⏳ 검사 대기";
-    case "ready": return "🙋 검사 요청 가능";
-    case "retry": return "↺ 다시 해 보기";
+    case "checked": return "통과";
+    case "requested": return "검사 대기";
+    case "ready": return "검사 요청 가능";
+    case "retry": return "다시 해 보기";
     case "practicing": return "연습 중";
     default: return "시작 전";
   }

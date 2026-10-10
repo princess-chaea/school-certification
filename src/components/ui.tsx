@@ -1,14 +1,10 @@
 import { useEffect, useState, type ReactNode } from "react";
 import type { Medal } from "../../shared/domain";
-import { MEDAL_LABEL } from "../../shared/domain";
 import { fileUrl } from "../lib/media";
+import { PixelIcon, PixelMedal } from "./Pixel";
 
-export function MedalBadge({ medal, size }: { medal: Medal; size?: "lg" }) {
-  return (
-    <span className={`medal ${medal} ${size ?? ""}`} title={MEDAL_LABEL[medal]}>
-      {medal === "none" ? "·" : MEDAL_LABEL[medal]}
-    </span>
-  );
+export function MedalBadge({ medal, size }: { medal: Medal; size?: "lg" | number }) {
+  return <PixelMedal medal={medal} size={size === "lg" ? 56 : typeof size === "number" ? size : 30} />;
 }
 
 export function Stamp({ title, sub, onDone }: { title: string; sub?: string; onDone: () => void }) {
@@ -18,11 +14,10 @@ export function Stamp({ title, sub, onDone }: { title: string; sub?: string; onD
   }, [onDone]);
   return (
     <div className="stamp-overlay" onClick={onDone}>
-      <div className="stamp">
-        <div>
-          <b>{title}</b>
-          {sub && <span>{sub}</span>}
-        </div>
+      <div className="stamp-pixel">
+        <PixelIcon name="star" size={56} />
+        <b className="hud">{title}</b>
+        {sub && <span>{sub}</span>}
       </div>
     </div>
   );
@@ -48,7 +43,7 @@ export function ToastHost() {
   return msg ? <div className="toast" role="status">{msg}</div> : null;
 }
 
-export function StorageImage({ path, fallback = "🖼️", onOpen }: { path?: string; fallback?: string; onOpen?: (url: string) => void }) {
+export function StorageImage({ path, icon = "camera", onOpen }: { path?: string; icon?: string; onOpen?: (url: string) => void }) {
   const [url, setUrl] = useState<string | null>(null);
   useEffect(() => {
     let alive = true;
@@ -59,7 +54,7 @@ export function StorageImage({ path, fallback = "🖼️", onOpen }: { path?: st
   }, [path]);
   return (
     <div className="thumb" style={url ? { backgroundImage: `url(${url})` } : undefined} onClick={() => url && onOpen?.(url)}>
-      {!url && fallback}
+      {!url && <PixelIcon name={icon} size={32} />}
     </div>
   );
 }
@@ -77,6 +72,23 @@ export function StorageAudio({ path }: { path?: string }) {
   return url ? <audio controls src={url} style={{ width: "100%", maxWidth: 320 }} /> : <span className="tiny">녹음 불러오는 중…</span>;
 }
 
+export function StorageLink({ path, name }: { path?: string; name?: string }) {
+  const [url, setUrl] = useState<string | null>(null);
+  useEffect(() => {
+    let alive = true;
+    if (path) fileUrl(path).then((u) => alive && setUrl(u)).catch(() => undefined);
+    return () => {
+      alive = false;
+    };
+  }, [path]);
+  if (!path) return null;
+  return url ? (
+    <a className="row small" href={url} target="_blank" rel="noreferrer" style={{ gap: 6 }}>
+      <PixelIcon name="file" size={18} /> {name || "첨부 파일"}
+    </a>
+  ) : null;
+}
+
 export function Lightbox({ url, onClose }: { url: string | null; onClose: () => void }) {
   if (!url) return null;
   return (
@@ -86,10 +98,31 @@ export function Lightbox({ url, onClose }: { url: string | null; onClose: () => 
   );
 }
 
-export function Empty({ children }: { children: ReactNode }) {
-  return <div className="card flat muted" style={{ textAlign: "center", padding: 28 }}>{children}</div>;
+export function Empty({ children, icon = "sparkle" }: { children: ReactNode; icon?: string }) {
+  return (
+    <div className="card flat muted empty">
+      <PixelIcon name={icon} size={40} />
+      <div>{children}</div>
+    </div>
+  );
 }
 
 export function Loading({ label = "불러오는 중…" }: { label?: string }) {
-  return <div className="page muted" style={{ textAlign: "center", paddingTop: 60 }}>{label}</div>;
+  return (
+    <div className="page muted loading">
+      <PixelIcon name="gamepad" size={48} className="bob" />
+      <div className="hud">LOADING…</div>
+      <div className="small">{label}</div>
+    </div>
+  );
+}
+
+/** 아이콘 + 글자 (제목 앞 장식용) */
+export function IconText({ icon, children, size = 22 }: { icon: string; children: ReactNode; size?: number }) {
+  return (
+    <span className="icon-text">
+      <PixelIcon name={icon} size={size} />
+      <span>{children}</span>
+    </span>
+  );
 }

@@ -1,7 +1,9 @@
 import { describe, expect, it } from "vitest";
 import { isCorrectAnswer, diffWords, firstLetterHint, normalizeSentence, speechMatchRatio } from "../typing";
 import { parseNeisSchoolInfo, neisResultMessage, shortSchoolName, mergeSchool, principalTitle } from "../school";
-import { parseStudentEmail, makeSid, thresholdsFor, medalFor, DEFAULT_CONFIG, englishProgress, computeProgress, nextStep } from "../domain";
+import { thresholdsFor, medalFor, DEFAULT_CONFIG, computeProgress, nextStep, validateEvidence } from "../domain";
+import { PROGRAM_TEMPLATES } from "../templates";
+import { ICONS } from "../../src/components/pixelArt";
 import task1 from "../../data/english/task1-cartoon.json";
 import g4 from "../../data/english/task3-grade4.json";
 import g5 from "../../data/english/task3-grade5.json";
@@ -51,33 +53,49 @@ describe("typing", () => {
 });
 
 describe("domain", () => {
-  it("parses student emails", () => {
-    expect(parseStudentEmail("263101@haju.es.kr")).toEqual({ sid: "263101", grade: 3, classNo: 1, number: 1 });
-    expect(parseStudentEmail("266625@HAJU.ES.KR")).toEqual({ sid: "266625", grade: 6, classNo: 6, number: 25 });
-    expect(parseStudentEmail("teacher@gmail.com")).toBeNull();
-    expect(parseStudentEmail("267101@haju.es.kr")).toBeNull();
-    expect(makeSid(3, 1, 1)).toBe("263101");
-  });
+  const P = (id: string) => DEFAULT_CONFIG.programs.find((p) => p.id === id)!;
   it("bronze equals the plan criterion", () => {
-    expect(thresholdsFor(DEFAULT_CONFIG, "reading", 3)).toEqual({ bronze: 40, silver: 60, gold: 80 });
-    expect(thresholdsFor(DEFAULT_CONFIG, "reading", 2)).toEqual({ bronze: 50, silver: 75, gold: 100 });
-    expect(thresholdsFor(DEFAULT_CONFIG, "carbon", 5)).toEqual({ bronze: 20, silver: 30, gold: 40 });
-    const t = thresholdsFor(DEFAULT_CONFIG, "carbon", 5)!;
+    expect(thresholdsFor(DEFAULT_CONFIG, P("reading"), 3)).toEqual({ bronze: 40, silver: 60, gold: 80 });
+    expect(thresholdsFor(DEFAULT_CONFIG, P("reading"), 2)).toEqual({ bronze: 50, silver: 75, gold: 100 });
+    const t = thresholdsFor(DEFAULT_CONFIG, P("carbon"), 5)!;
+    expect(t).toEqual({ bronze: 20, silver: 30, gold: 40 });
     expect(medalFor(19, t)).toBe("none");
     expect(medalFor(20, t)).toBe("bronze");
     expect(medalFor(40, t)).toBe("gold");
     expect(nextStep(12, t)).toEqual({ medal: "bronze", remaining: 8 });
     expect(nextStep(45, t)).toBeNull();
   });
-  it("english medal counts completed tasks", () => {
-    expect(englishProgress(DEFAULT_CONFIG, { t1: 30, t2: 1, t3: 10, t4: 0 }).medal).toBe("bronze");
-    expect(englishProgress(DEFAULT_CONFIG, { t1: 29, t2: 1, t3: 40, t4: 4 }).medal).toBe("silver");
-    expect(englishProgress(DEFAULT_CONFIG, { t1: 30, t2: 1, t3: 40, t4: 4 }).medal).toBe("gold");
+  it("task programs count completed tasks", () => {
+    const g = (c: Record<string, number>) => computeProgress(DEFAULT_CONFIG, 5, { english: c }).english;
+    expect(g({ t1: 30, t2: 1, t3: 10, t4: 0 }).medal).toBe("bronze");
+    expect(g({ t1: 29, t2: 1, t3: 40, t4: 4 }).medal).toBe("silver");
+    expect(g({ t1: 30, t2: 1, t3: 40, t4: 4 }).medal).toBe("gold");
+    expect(g({ t1: 99 }).tasks?.t1).toBe(30);
   });
-  it("english only for grades 4-6", () => {
-    const zero = { t1: 0, t2: 0, t3: 0, t4: 0 };
-    expect(computeProgress(DEFAULT_CONFIG, 3, { reading: 1, carbon: 1, english: zero }).english).toBeUndefined();
-    expect(computeProgress(DEFAULT_CONFIG, 4, { reading: 1, carbon: 1, english: zero }).english?.medal).toBe("none");
+  it("programs only for their grades", () => {
+    expect(computeProgress(DEFAULT_CONFIG, 3, {}).english).toBeUndefined();
+    expect(computeProgress(DEFAULT_CONFIG, 4, {}).english?.medal).toBe("none");
+    expect(computeProgress(DEFAULT_CONFIG, 4, { reading: 41 }).reading?.medal).toBe("bronze");
+  });
+  it("validates evidence", () => {
+    const carbon = P("carbon");
+    expect(validateEvidence(carbon, {})).toBe("사진을 넣어 주세요");
+    expect(validateEvidence(carbon, { photo: true, text: "좋아요 정말", choice: "플로깅" })).toBeNull();
+    expect(validateEvidence(carbon, { photo: true, text: "좋", choice: "플로깅" })).toMatch(/자 이상/);
+    expect(validateEvidence(carbon, { photo: true, text: "좋아요 좋아요" })).toBe("활동 종류를 골라 주세요");
+    const t4 = P("english").tasks!.find((t) => t.id === "t4")!;
+    expect(validateEvidence({ ...t4, evidence: t4.evidence!, required: t4.required! }, { audioSec: 60, fields: { bookTitle: "x" } })).toMatch(/분 이상/);
+  });
+  it("templates are valid programs", () => {
+    expect(PROGRAM_TEMPLATES.length).toBeGreaterThanOrEqual(25);
+    const ids = new Set<string>();
+    for (const t of PROGRAM_TEMPLATES) {
+      expect(ids.has(t.id)).toBe(false);
+      ids.add(t.id);
+      expect(t.required.every((r) => t.evidence.includes(r))).toBe(true);
+      expect(Object.keys(t.targetByGrade).length).toBe(t.grades.length);
+      expect(ICONS[t.icon]).toBeTruthy();
+    }
   });
 });
 
@@ -107,10 +125,6 @@ describe("school", () => {
     expect(shortSchoolName("경산중학교")).toBe("경산중");
     expect(mergeSchool({ name: "구미고등학교" }).shortName).toBe("구미고");
     expect(principalTitle(mergeSchool(null))).toBe("하주초등학교장 문석주");
-  });
-  it("student email uses school domain", () => {
-    expect(parseStudentEmail("263101@other.es.kr", "other.es.kr")?.grade).toBe(3);
-    expect(parseStudentEmail("263101@haju.es.kr", "other.es.kr")).toBeNull();
   });
 });
 

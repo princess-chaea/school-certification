@@ -37,12 +37,13 @@ export async function loadSchool(schoolId: string): Promise<SchoolInfo & { statu
 }
 
 export interface StaffDoc {
-  role: "teacher" | "admin";
+  role: "teacher" | "admin"; // admin = 학교 담당자
   status: "pending" | "active" | "rejected";
   name?: string;
-  teacherType?: "homeroom" | "subject";
-  grade?: number;
-  classNo?: number;
+  homeroom?: boolean; // 담임
+  grade?: number | null;
+  classNo?: number | null;
+  subject?: boolean; // 전담
   grades?: number[];
   programs?: string[];
 }
@@ -69,8 +70,8 @@ export async function requireStaff(req: CallableRequest, schoolId: string, admin
 
 export function staffCanSeeStudent(u: StaffDoc, s: { grade: number; classNo: number }) {
   if (u.role === "admin") return true;
-  if (u.teacherType === "homeroom") return u.grade === s.grade && u.classNo === s.classNo;
-  if (u.teacherType === "subject") return (u.grades ?? []).includes(s.grade);
+  if (u.homeroom && u.grade === s.grade && u.classNo === s.classNo) return true;
+  if (u.subject && (u.grades ?? []).includes(s.grade)) return true;
   return false;
 }
 

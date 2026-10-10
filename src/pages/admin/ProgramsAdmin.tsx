@@ -9,6 +9,7 @@ import { useSession } from "../../lib/auth";
 import { PageHeader } from "../../components/Layout";
 import { PixelIcon } from "../../components/Pixel";
 import { ICONS } from "../../components/pixelArt";
+import { ICON_GROUPS } from "../../components/pixelArtActivities";
 import { toast } from "../../components/ui";
 import { EVIDENCE_LABEL, HAJU_PROGRAMS, type EvidenceKind, type ProgramDef } from "../../../shared/domain";
 import { PROGRAM_TEMPLATES, type ProgramTemplate } from "../../../shared/templates";
@@ -170,9 +171,22 @@ function ProgramEditor({ initial, onCancel, onSave, existingIds }: { initial: Pr
           <label className="field" style={{ flex: 1 }}><span>항목 이름 (인증서 '인증분야'에 표시)</span><input className="input" value={p.name} onChange={(e) => set({ name: e.target.value })} /></label>
           <label className="field" style={{ width: 120 }}><span>영역</span><input className="input" value={p.area} onChange={(e) => set({ area: e.target.value })} /></label>
         </div>
+        <button className="btn ghost sm" style={{ alignSelf: "flex-start" }} onClick={() => setIconPick((v) => !v)}>{iconPick ? "아이콘 고르기 닫기" : "아이콘 바꾸기"}</button>
         {iconPick && (
-          <div className="icon-grid">
-            {Object.keys(ICONS).map((n) => <button key={n} className={`icon-choice ${p.icon === n ? "on" : ""}`} onClick={() => { set({ icon: n }); setIconPick(false); }} title={n}><PixelIcon name={n} size={28} /></button>)}
+          <div className="stack" style={{ gap: 8 }}>
+            {ICON_GROUPS.map((g) => (
+              <div key={g.label}>
+                <div className="tiny" style={{ fontWeight: 700, marginBottom: 4 }}>{g.label}</div>
+                <div className="icon-grid labeled">
+                  {g.icons.filter(([n]) => ICONS[n]).map(([n, label]) => (
+                    <button key={n} className={`icon-choice ${p.icon === n ? "on" : ""}`} onClick={() => { set({ icon: n }); setIconPick(false); }} title={label}>
+                      <PixelIcon name={n} size={28} />
+                      <span>{label}</span>
+                    </button>
+                  ))}
+                </div>
+              </div>
+            ))}
           </div>
         )}
         <label className="field"><span>학생에게 보이는 설명</span><textarea className="input" value={p.description} onChange={(e) => set({ description: e.target.value })} /></label>

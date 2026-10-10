@@ -1,5 +1,6 @@
 // 레트로 픽셀 아이콘 (16×16, Endesga 32 팔레트 기반)
 // '.' = 투명, 그 외 문자 = 팔레트 색
+import { ACTIVITY_ICONS } from "./pixelArtActivities";
 
 export const PALETTE: Record<string, string> = {
   k: "#1f2240", // 외곽선
@@ -929,6 +930,9 @@ export const ICONS: Record<string, string[]> = {
     "................",
   ],
 };
+
+// 인증 항목용 활동 아이콘 (pixelArtActivities.ts)
+Object.assign(ICONS, ACTIVITY_ICONS);
 
 export type IconName = keyof typeof ICONS;
 

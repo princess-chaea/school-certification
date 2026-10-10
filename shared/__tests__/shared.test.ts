@@ -3,7 +3,8 @@ import { isCorrectAnswer, diffWords, firstLetterHint, normalizeSentence, speechM
 import { parseNeisSchoolInfo, neisResultMessage, shortSchoolName, mergeSchool, principalTitle } from "../school";
 import { thresholdsFor, medalFor, HAJU_PROGRAMS, DEFAULT_CONFIG as BASE_CONFIG, computeProgress, nextStep, validateEvidence } from "../domain";
 import { PROGRAM_TEMPLATES } from "../templates";
-import { ICONS } from "../../src/components/pixelArt";
+import { ICONS, PALETTE } from "../../src/components/pixelArt";
+import { ICON_GROUPS, ACTIVITY_ICONS } from "../../src/components/pixelArtActivities";
 import task1 from "../../data/english/task1-cartoon.json";
 import g4 from "../../data/english/task3-grade4.json";
 import g5 from "../../data/english/task3-grade5.json";
@@ -98,6 +99,31 @@ describe("domain", () => {
       expect(Object.keys(t.targetByGrade).length).toBe(t.grades.length);
       expect(ICONS[t.icon]).toBeTruthy();
     }
+  });
+});
+
+describe("pixel icons", () => {
+  it("every icon is 16x16 using palette colours", () => {
+    for (const [name, rows] of Object.entries(ICONS)) {
+      expect(rows.length, name).toBe(16);
+      for (const row of rows) {
+        expect(row.length, name).toBe(16);
+        for (const ch of row) expect(ch === "." || ch in PALETTE, `${name}: ${ch}`).toBe(true);
+      }
+    }
+  });
+  it("50 activity icons, none replacing a built-in icon", async () => {
+    const { readFileSync } = await import("node:fs");
+    const base = readFileSync(new URL("../../src/components/pixelArt.ts", import.meta.url), "utf8");
+    const builtIn = [...base.matchAll(/^  (\w+): \[$/gm)].map((m) => m[1]);
+    expect(Object.keys(ACTIVITY_ICONS)).toHaveLength(50);
+    expect(Object.keys(ACTIVITY_ICONS).filter((n) => builtIn.includes(n))).toEqual([]);
+  });
+  it("picker groups only list existing icons, every activity icon included", () => {
+    const names = ICON_GROUPS.flatMap((g) => g.icons.map(([n]) => n));
+    expect(names.filter((n) => !ICONS[n])).toEqual([]);
+    expect(new Set(names).size).toBe(names.length);
+    expect(Object.keys(ACTIVITY_ICONS).filter((n) => !names.includes(n))).toEqual([]);
   });
 });
 

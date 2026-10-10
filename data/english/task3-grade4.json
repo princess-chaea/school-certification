@@ -1,0 +1,345 @@
+{
+  "setId": "task3-g4",
+  "title": "과제 3 · 영어 교과서 주요문장 (4학년)",
+  "source": "천재(함) 교과서 기반 예시 (docs/하주초 영어 과제3_영어교과서주요문장.pdf)",
+  "grades": [
+    4
+  ],
+  "goal": 40,
+  "note": "ko는 AI 초안(koStatus=draft) — 영어 담당 선생님 검토 후 approved로 변경. type=student 칸은 학생이 단원 관련 표현을 직접 입력하고 교사가 검사 때 확인.",
+  "items": [
+    {
+      "no": 1,
+      "unit": 1,
+      "type": "fixed",
+      "en": "What's your name?",
+      "ko": "이름이 뭐니?",
+      "koStatus": "draft"
+    },
+    {
+      "no": 2,
+      "unit": 1,
+      "type": "fixed",
+      "en": "My name is Sam.",
+      "ko": "내 이름은 Sam이야.",
+      "koStatus": "draft"
+    },
+    {
+      "no": 3,
+      "unit": 1,
+      "type": "fixed",
+      "en": "Nice to meet you.",
+      "ko": "만나서 반가워.",
+      "koStatus": "draft"
+    },
+    {
+      "no": 4,
+      "unit": 1,
+      "type": "fixed",
+      "en": "Good morning!",
+      "ko": "좋은 아침이야! (안녕하세요)",
+      "koStatus": "draft",
+      "alternatives": [
+        "Good afternoon!",
+        "Good evening!"
+      ]
+    },
+    {
+      "no": 5,
+      "unit": 1,
+      "type": "student",
+      "en": "",
+      "ko": "",
+      "prompt": "1단원에서 배운 표현을 직접 골라 적어 보세요"
+    },
+    {
+      "no": 6,
+      "unit": 2,
+      "type": "fixed",
+      "en": "Are you happy?",
+      "ko": "너는 행복하니?",
+      "koStatus": "draft"
+    },
+    {
+      "no": 7,
+      "unit": 2,
+      "type": "fixed",
+      "en": "Yes, I am.",
+      "ko": "응, 그래.",
+      "koStatus": "draft"
+    },
+    {
+      "no": 8,
+      "unit": 2,
+      "type": "fixed",
+      "en": "No, I'm not.",
+      "ko": "아니, 그렇지 않아.",
+      "koStatus": "draft"
+    },
+    {
+      "no": 9,
+      "unit": 2,
+      "type": "fixed",
+      "en": "I'm thirsty.",
+      "ko": "나는 목말라.",
+      "koStatus": "draft"
+    },
+    {
+      "no": 10,
+      "unit": 2,
+      "type": "student",
+      "en": "",
+      "ko": "",
+      "prompt": "2단원에서 배운 표현을 직접 골라 적어 보세요"
+    },
+    {
+      "no": 11,
+      "unit": 3,
+      "type": "fixed",
+      "en": "Don't sit here.",
+      "ko": "여기 앉지 마.",
+      "koStatus": "draft"
+    },
+    {
+      "no": 12,
+      "unit": 3,
+      "type": "fixed",
+      "en": "Don't touch.",
+      "ko": "만지지 마.",
+      "koStatus": "draft"
+    },
+    {
+      "no": 13,
+      "unit": 3,
+      "type": "fixed",
+      "en": "Okay.",
+      "ko": "알겠어.",
+      "koStatus": "draft"
+    },
+    {
+      "no": 14,
+      "unit": 3,
+      "type": "fixed",
+      "en": "Be careful.",
+      "ko": "조심해.",
+      "koStatus": "draft"
+    },
+    {
+      "no": 15,
+      "unit": 3,
+      "type": "student",
+      "en": "",
+      "ko": "",
+      "prompt": "3단원에서 배운 표현을 직접 골라 적어 보세요"
+    },
+    {
+      "no": 16,
+      "unit": 4,
+      "type": "fixed",
+      "en": "Let's play tennis.",
+      "ko": "테니스 하자.",
+      "koStatus": "draft"
+    },
+    {
+      "no": 17,
+      "unit": 4,
+      "type": "fixed",
+      "en": "Sounds good.",
+      "ko": "좋아.",
+      "koStatus": "draft"
+    },
+    {
+      "no": 18,
+      "unit": 4,
+      "type": "fixed",
+      "en": "Sorry, I can't.",
+      "ko": "미안, 난 못 해.",
+      "koStatus": "draft"
+    },
+    {
+      "no": 19,
+      "unit": 4,
+      "type": "fixed",
+      "en": "I'm sick.",
+      "ko": "나는 아파.",
+      "koStatus": "draft"
+    },
+    {
+      "no": 20,
+      "unit": 4,
+      "type": "student",
+      "en": "",
+      "ko": "",
+      "prompt": "4단원에서 배운 표현을 직접 골라 적어 보세요"
+    },
+    {
+      "no": 21,
+      "unit": 5,
+      "type": "fixed",
+      "en": "What do you want?",
+      "ko": "너는 뭘 원하니?",
+      "koStatus": "draft"
+    },
+    {
+      "no": 22,
+      "unit": 5,
+      "type": "fixed",
+      "en": "I want ice cream.",
+      "ko": "나는 아이스크림을 원해.",
+      "koStatus": "draft"
+    },
+    {
+      "no": 23,
+      "unit": 5,
+      "type": "fixed",
+      "en": "Here you are.",
+      "ko": "여기 있어.",
+      "koStatus": "draft"
+    },
+    {
+      "no": 24,
+      "unit": 5,
+      "type": "fixed",
+      "en": "Help yourself.",
+      "ko": "마음껏 먹어.",
+      "koStatus": "draft"
+    },
+    {
+      "no": 25,
+      "unit": 5,
+      "type": "student",
+      "en": "",
+      "ko": "",
+      "prompt": "5단원에서 배운 표현을 직접 골라 적어 보세요"
+    },
+    {
+      "no": 26,
+      "unit": 6,
+      "type": "fixed",
+      "en": "Where's my soccer ball?",
+      "ko": "내 축구공 어디 있지?",
+      "koStatus": "draft"
+    },
+    {
+      "no": 27,
+      "unit": 6,
+      "type": "fixed",
+      "en": "It's in the box.",
+      "ko": "상자 안에 있어.",
+      "koStatus": "draft"
+    },
+    {
+      "no": 28,
+      "unit": 6,
+      "type": "fixed",
+      "en": "It's on the bed.",
+      "ko": "침대 위에 있어.",
+      "koStatus": "draft"
+    },
+    {
+      "no": 29,
+      "unit": 6,
+      "type": "fixed",
+      "en": "It's under the chair.",
+      "ko": "의자 아래에 있어.",
+      "koStatus": "draft"
+    },
+    {
+      "no": 30,
+      "unit": 6,
+      "type": "student",
+      "en": "",
+      "ko": "",
+      "prompt": "6단원에서 배운 표현을 직접 골라 적어 보세요"
+    },
+    {
+      "no": 31,
+      "unit": 7,
+      "type": "fixed",
+      "en": "What day is it today?",
+      "ko": "오늘 무슨 요일이야?",
+      "koStatus": "draft"
+    },
+    {
+      "no": 32,
+      "unit": 7,
+      "type": "fixed",
+      "en": "It's Monday.",
+      "ko": "월요일이야.",
+      "koStatus": "draft",
+      "alternatives": [
+        "It's Tuesday.",
+        "It's Wednesday.",
+        "It's Thursday."
+      ]
+    },
+    {
+      "no": 33,
+      "unit": 7,
+      "type": "fixed",
+      "en": "It's Friday.",
+      "ko": "금요일이야.",
+      "koStatus": "draft",
+      "alternatives": [
+        "It's Saturday.",
+        "It's Sunday."
+      ]
+    },
+    {
+      "no": 34,
+      "unit": 7,
+      "type": "fixed",
+      "en": "I have a violin class.",
+      "ko": "나는 바이올린 수업이 있어.",
+      "koStatus": "draft"
+    },
+    {
+      "no": 35,
+      "unit": 7,
+      "type": "student",
+      "en": "",
+      "ko": "",
+      "prompt": "7단원에서 배운 표현을 직접 골라 적어 보세요"
+    },
+    {
+      "no": 36,
+      "unit": 8,
+      "type": "fixed",
+      "en": "How much is it?",
+      "ko": "그거 얼마예요?",
+      "koStatus": "draft"
+    },
+    {
+      "no": 37,
+      "unit": 8,
+      "type": "fixed",
+      "en": "It's eight hundred won.",
+      "ko": "800원이에요.",
+      "koStatus": "draft"
+    },
+    {
+      "no": 38,
+      "unit": 8,
+      "type": "fixed",
+      "en": "It's three thousand won.",
+      "ko": "3,000원이에요.",
+      "koStatus": "draft"
+    },
+    {
+      "no": 39,
+      "unit": 8,
+      "type": "fixed",
+      "en": "I'll take it.",
+      "ko": "그걸로 살게요.",
+      "koStatus": "draft"
+    },
+    {
+      "no": 40,
+      "unit": 8,
+      "type": "student",
+      "en": "",
+      "ko": "",
+      "prompt": "8단원에서 배운 표현을 직접 골라 적어 보세요"
+    }
+  ]
+}

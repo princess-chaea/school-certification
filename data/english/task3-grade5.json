@@ -1,0 +1,351 @@
+{
+  "setId": "task3-g5",
+  "title": "과제 3 · 영어 교과서 주요문장 (5학년)",
+  "source": "천재(함) 교과서 기반 예시 (docs/하주초 영어 과제3_영어교과서주요문장.pdf)",
+  "grades": [
+    5
+  ],
+  "goal": 40,
+  "note": "ko는 AI 초안(koStatus=draft) — 영어 담당 선생님 검토 후 approved로 변경. type=student 칸은 학생이 단원 관련 표현을 직접 입력하고 교사가 검사 때 확인.",
+  "items": [
+    {
+      "no": 1,
+      "unit": 1,
+      "type": "fixed",
+      "en": "Where are you from?",
+      "ko": "너는 어디에서 왔니?",
+      "koStatus": "draft"
+    },
+    {
+      "no": 2,
+      "unit": 1,
+      "type": "fixed",
+      "en": "I'm from Korea.",
+      "ko": "나는 한국에서 왔어.",
+      "koStatus": "draft",
+      "alternatives": [
+        "I'm from Vietnam.",
+        "I'm from Australia."
+      ]
+    },
+    {
+      "no": 3,
+      "unit": 1,
+      "type": "fixed",
+      "en": "I'm from the U.S.",
+      "ko": "나는 미국에서 왔어.",
+      "koStatus": "draft",
+      "alternatives": [
+        "I'm from Canada.",
+        "I'm from the U.K.",
+        "I'm from Mexico."
+      ]
+    },
+    {
+      "no": 4,
+      "unit": 1,
+      "type": "fixed",
+      "en": "Good morning!",
+      "ko": "좋은 아침이야! (안녕하세요)",
+      "koStatus": "draft",
+      "alternatives": [
+        "Good afternoon!",
+        "Good evening!"
+      ]
+    },
+    {
+      "no": 5,
+      "unit": 1,
+      "type": "student",
+      "en": "",
+      "ko": "",
+      "prompt": "1단원에서 배운 표현을 직접 골라 적어 보세요"
+    },
+    {
+      "no": 6,
+      "unit": 2,
+      "type": "fixed",
+      "en": "What do you do on Saturdays?",
+      "ko": "너는 토요일마다 뭐 하니?",
+      "koStatus": "draft"
+    },
+    {
+      "no": 7,
+      "unit": 2,
+      "type": "fixed",
+      "en": "I have soccer practice.",
+      "ko": "나는 축구 연습이 있어.",
+      "koStatus": "draft"
+    },
+    {
+      "no": 8,
+      "unit": 2,
+      "type": "fixed",
+      "en": "Sorry, but I go to the farm on Saturdays.",
+      "ko": "미안하지만 나는 토요일마다 농장에 가.",
+      "koStatus": "draft"
+    },
+    {
+      "no": 9,
+      "unit": 2,
+      "type": "fixed",
+      "en": "I usually watch a movie.",
+      "ko": "나는 보통 영화를 봐.",
+      "koStatus": "draft"
+    },
+    {
+      "no": 10,
+      "unit": 2,
+      "type": "student",
+      "en": "",
+      "ko": "",
+      "prompt": "2단원에서 배운 표현을 직접 골라 적어 보세요"
+    },
+    {
+      "no": 11,
+      "unit": 3,
+      "type": "fixed",
+      "en": "May I sit here?",
+      "ko": "여기 앉아도 될까요?",
+      "koStatus": "draft"
+    },
+    {
+      "no": 12,
+      "unit": 3,
+      "type": "fixed",
+      "en": "Yes, you may.",
+      "ko": "네, 앉아도 돼요.",
+      "koStatus": "draft",
+      "alternatives": [
+        "No, you may not."
+      ]
+    },
+    {
+      "no": 13,
+      "unit": 3,
+      "type": "fixed",
+      "en": "Go ahead.",
+      "ko": "그렇게 하세요.",
+      "koStatus": "draft"
+    },
+    {
+      "no": 14,
+      "unit": 3,
+      "type": "fixed",
+      "en": "May I borrow a wheelchair?",
+      "ko": "휠체어를 빌려도 될까요?",
+      "koStatus": "draft"
+    },
+    {
+      "no": 15,
+      "unit": 3,
+      "type": "student",
+      "en": "",
+      "ko": "",
+      "prompt": "3단원에서 배운 표현을 직접 골라 적어 보세요"
+    },
+    {
+      "no": 16,
+      "unit": 4,
+      "type": "fixed",
+      "en": "Whose sock is this?",
+      "ko": "이건 누구의 양말이니?",
+      "koStatus": "draft",
+      "alternatives": [
+        "Whose sock is that?"
+      ]
+    },
+    {
+      "no": 17,
+      "unit": 4,
+      "type": "fixed",
+      "en": "It's Kevin's.",
+      "ko": "그건 Kevin의 것이야.",
+      "koStatus": "draft"
+    },
+    {
+      "no": 18,
+      "unit": 4,
+      "type": "fixed",
+      "en": "No, it's Jinu's towel.",
+      "ko": "아니, 그건 진우의 수건이야.",
+      "koStatus": "draft"
+    },
+    {
+      "no": 19,
+      "unit": 4,
+      "type": "fixed",
+      "en": "It's mine.",
+      "ko": "그건 내 거야.",
+      "koStatus": "draft"
+    },
+    {
+      "no": 20,
+      "unit": 4,
+      "type": "student",
+      "en": "",
+      "ko": "",
+      "prompt": "4단원에서 배운 표현을 직접 골라 적어 보세요"
+    },
+    {
+      "no": 21,
+      "unit": 5,
+      "type": "fixed",
+      "en": "May I take your order?",
+      "ko": "주문하시겠어요?",
+      "koStatus": "draft"
+    },
+    {
+      "no": 22,
+      "unit": 5,
+      "type": "fixed",
+      "en": "I'd like fried rice.",
+      "ko": "볶음밥 주세요.",
+      "koStatus": "draft"
+    },
+    {
+      "no": 23,
+      "unit": 5,
+      "type": "fixed",
+      "en": "What's Bulgogi?",
+      "ko": "불고기가 뭐예요?",
+      "koStatus": "draft"
+    },
+    {
+      "no": 24,
+      "unit": 5,
+      "type": "fixed",
+      "en": "It's a Korean beef dish.",
+      "ko": "한국의 소고기 요리예요.",
+      "koStatus": "draft"
+    },
+    {
+      "no": 25,
+      "unit": 5,
+      "type": "student",
+      "en": "",
+      "ko": "",
+      "prompt": "5단원에서 배운 표현을 직접 골라 적어 보세요"
+    },
+    {
+      "no": 26,
+      "unit": 6,
+      "type": "fixed",
+      "en": "What will you do this summer?",
+      "ko": "이번 여름에 뭐 할 거니?",
+      "koStatus": "draft"
+    },
+    {
+      "no": 27,
+      "unit": 6,
+      "type": "fixed",
+      "en": "I'll join a space camp.",
+      "ko": "나는 우주 캠프에 참가할 거야.",
+      "koStatus": "draft"
+    },
+    {
+      "no": 28,
+      "unit": 6,
+      "type": "fixed",
+      "en": "Have a good time.",
+      "ko": "즐거운 시간 보내.",
+      "koStatus": "draft"
+    },
+    {
+      "no": 29,
+      "unit": 6,
+      "type": "fixed",
+      "en": "You, too.",
+      "ko": "너도.",
+      "koStatus": "draft"
+    },
+    {
+      "no": 30,
+      "unit": 6,
+      "type": "student",
+      "en": "",
+      "ko": "",
+      "prompt": "6단원에서 배운 표현을 직접 골라 적어 보세요"
+    },
+    {
+      "no": 31,
+      "unit": 7,
+      "type": "fixed",
+      "en": "How was your vacation?",
+      "ko": "방학은 어땠니?",
+      "koStatus": "draft"
+    },
+    {
+      "no": 32,
+      "unit": 7,
+      "type": "fixed",
+      "en": "It was good.",
+      "ko": "좋았어.",
+      "koStatus": "draft"
+    },
+    {
+      "no": 33,
+      "unit": 7,
+      "type": "fixed",
+      "en": "What did you do during the vacation?",
+      "ko": "방학 동안 뭐 했니?",
+      "koStatus": "draft"
+    },
+    {
+      "no": 34,
+      "unit": 7,
+      "type": "fixed",
+      "en": "I visited my uncle in Jeju-do.",
+      "ko": "나는 제주도에 계신 삼촌 댁에 갔어.",
+      "koStatus": "draft"
+    },
+    {
+      "no": 35,
+      "unit": 7,
+      "type": "student",
+      "en": "",
+      "ko": "",
+      "prompt": "7단원에서 배운 표현을 직접 골라 적어 보세요"
+    },
+    {
+      "no": 36,
+      "unit": 8,
+      "type": "fixed",
+      "en": "How much are these jeans?",
+      "ko": "이 청바지 얼마예요?",
+      "koStatus": "draft"
+    },
+    {
+      "no": 37,
+      "unit": 8,
+      "type": "fixed",
+      "en": "They are fifteen dollars.",
+      "ko": "15달러예요.",
+      "koStatus": "draft"
+    },
+    {
+      "no": 38,
+      "unit": 8,
+      "type": "fixed",
+      "en": "What size do you want?",
+      "ko": "어떤 사이즈를 원하세요?",
+      "koStatus": "draft"
+    },
+    {
+      "no": 39,
+      "unit": 8,
+      "type": "fixed",
+      "en": "I want a small.",
+      "ko": "작은 사이즈를 원해요.",
+      "koStatus": "draft"
+    },
+    {
+      "no": 40,
+      "unit": 8,
+      "type": "student",
+      "en": "",
+      "ko": "",
+      "prompt": "8단원에서 배운 표현을 직접 골라 적어 보세요"
+    }
+  ]
+}

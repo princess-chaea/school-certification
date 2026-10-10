@@ -1,0 +1,347 @@
+{
+  "setId": "task3-g6",
+  "title": "과제 3 · 영어 교과서 주요문장 (6학년)",
+  "source": "천재(함) 교과서 기반 예시 (docs/하주초 영어 과제3_영어교과서주요문장.pdf)",
+  "grades": [
+    6
+  ],
+  "goal": 40,
+  "note": "ko는 AI 초안(koStatus=draft) — 영어 담당 선생님 검토 후 approved로 변경. type=student 칸은 학생이 단원 관련 표현을 직접 입력하고 교사가 검사 때 확인.",
+  "items": [
+    {
+      "no": 1,
+      "unit": 1,
+      "type": "fixed",
+      "en": "What grade are you in?",
+      "ko": "너는 몇 학년이니?",
+      "koStatus": "draft"
+    },
+    {
+      "no": 2,
+      "unit": 1,
+      "type": "fixed",
+      "en": "I'm in the sixth grade.",
+      "ko": "나는 6학년이야.",
+      "koStatus": "draft"
+    },
+    {
+      "no": 3,
+      "unit": 1,
+      "type": "fixed",
+      "en": "What's your name?",
+      "ko": "이름이 뭐니?",
+      "koStatus": "draft"
+    },
+    {
+      "no": 4,
+      "unit": 1,
+      "type": "fixed",
+      "en": "How do you spell your name?",
+      "ko": "네 이름 철자가 어떻게 되니?",
+      "koStatus": "draft"
+    },
+    {
+      "no": 5,
+      "unit": 1,
+      "type": "student",
+      "en": "",
+      "ko": "",
+      "prompt": "1단원에서 배운 표현을 직접 골라 적어 보세요"
+    },
+    {
+      "no": 6,
+      "unit": 2,
+      "type": "fixed",
+      "en": "What's wrong?",
+      "ko": "무슨 일 있니? (어디 아프니?)",
+      "koStatus": "draft"
+    },
+    {
+      "no": 7,
+      "unit": 2,
+      "type": "fixed",
+      "en": "You look sick.",
+      "ko": "너 아파 보여.",
+      "koStatus": "draft"
+    },
+    {
+      "no": 8,
+      "unit": 2,
+      "type": "fixed",
+      "en": "I have a stomachache.",
+      "ko": "나 배가 아파.",
+      "koStatus": "draft"
+    },
+    {
+      "no": 9,
+      "unit": 2,
+      "type": "fixed",
+      "en": "Take this medicine and get some rest.",
+      "ko": "이 약을 먹고 좀 쉬어.",
+      "koStatus": "draft"
+    },
+    {
+      "no": 10,
+      "unit": 2,
+      "type": "student",
+      "en": "",
+      "ko": "",
+      "prompt": "2단원에서 배운 표현을 직접 골라 적어 보세요"
+    },
+    {
+      "no": 11,
+      "unit": 3,
+      "type": "fixed",
+      "en": "When is the club festival?",
+      "ko": "동아리 축제가 언제야?",
+      "koStatus": "draft"
+    },
+    {
+      "no": 12,
+      "unit": 3,
+      "type": "fixed",
+      "en": "It's on June 8th.",
+      "ko": "6월 8일이야.",
+      "koStatus": "draft"
+    },
+    {
+      "no": 13,
+      "unit": 3,
+      "type": "fixed",
+      "en": "Can you come to the festival?",
+      "ko": "축제에 올 수 있니?",
+      "koStatus": "draft"
+    },
+    {
+      "no": 14,
+      "unit": 3,
+      "type": "fixed",
+      "en": "Of course.",
+      "ko": "물론이지.",
+      "koStatus": "draft",
+      "alternatives": [
+        "Sorry, I can't."
+      ]
+    },
+    {
+      "no": 15,
+      "unit": 3,
+      "type": "student",
+      "en": "",
+      "ko": "",
+      "prompt": "3단원에서 배운 표현을 직접 골라 적어 보세요"
+    },
+    {
+      "no": 16,
+      "unit": 4,
+      "type": "fixed",
+      "en": "Where is the police station?",
+      "ko": "경찰서가 어디에 있나요?",
+      "koStatus": "draft"
+    },
+    {
+      "no": 17,
+      "unit": 4,
+      "type": "fixed",
+      "en": "Go straight two blocks and turn left.",
+      "ko": "두 블록 곧장 가서 왼쪽으로 도세요.",
+      "koStatus": "draft"
+    },
+    {
+      "no": 18,
+      "unit": 4,
+      "type": "fixed",
+      "en": "It's on your right.",
+      "ko": "오른쪽에 있어요.",
+      "koStatus": "draft"
+    },
+    {
+      "no": 19,
+      "unit": 4,
+      "type": "fixed",
+      "en": "It's next to the museum.",
+      "ko": "박물관 옆에 있어요.",
+      "koStatus": "draft"
+    },
+    {
+      "no": 20,
+      "unit": 4,
+      "type": "student",
+      "en": "",
+      "ko": "",
+      "prompt": "4단원에서 배운 표현을 직접 골라 적어 보세요"
+    },
+    {
+      "no": 21,
+      "unit": 5,
+      "type": "fixed",
+      "en": "What are you going to do tomorrow?",
+      "ko": "내일 뭐 할 거니?",
+      "koStatus": "draft"
+    },
+    {
+      "no": 22,
+      "unit": 5,
+      "type": "fixed",
+      "en": "I'm going to do my science project.",
+      "ko": "나는 과학 과제를 할 거야.",
+      "koStatus": "draft"
+    },
+    {
+      "no": 23,
+      "unit": 5,
+      "type": "fixed",
+      "en": "We're going to see a comedy movie.",
+      "ko": "우리는 코미디 영화를 볼 거야.",
+      "koStatus": "draft"
+    },
+    {
+      "no": 24,
+      "unit": 5,
+      "type": "fixed",
+      "en": "Hello? This is Hana.",
+      "ko": "여보세요? 나 하나야.",
+      "koStatus": "draft"
+    },
+    {
+      "no": 25,
+      "unit": 5,
+      "type": "student",
+      "en": "",
+      "ko": "",
+      "prompt": "5단원에서 배운 표현을 직접 골라 적어 보세요"
+    },
+    {
+      "no": 26,
+      "unit": 6,
+      "type": "fixed",
+      "en": "What does he look like?",
+      "ko": "그는 어떻게 생겼니?",
+      "koStatus": "draft",
+      "alternatives": [
+        "What does she look like?"
+      ]
+    },
+    {
+      "no": 27,
+      "unit": 6,
+      "type": "fixed",
+      "en": "He has blue eyes and short curly hair.",
+      "ko": "그는 파란 눈에 짧은 곱슬머리야.",
+      "koStatus": "draft",
+      "alternatives": [
+        "She has blue eyes and short curly hair."
+      ]
+    },
+    {
+      "no": 28,
+      "unit": 6,
+      "type": "fixed",
+      "en": "What is he wearing?",
+      "ko": "그는 무엇을 입고 있니?",
+      "koStatus": "draft",
+      "alternatives": [
+        "What is she wearing?"
+      ]
+    },
+    {
+      "no": 29,
+      "unit": 6,
+      "type": "fixed",
+      "en": "He is wearing blue pants.",
+      "ko": "그는 파란 바지를 입고 있어.",
+      "koStatus": "draft",
+      "alternatives": [
+        "She is wearing blue pants."
+      ]
+    },
+    {
+      "no": 30,
+      "unit": 6,
+      "type": "student",
+      "en": "",
+      "ko": "",
+      "prompt": "6단원에서 배운 표현을 직접 골라 적어 보세요"
+    },
+    {
+      "no": 31,
+      "unit": 7,
+      "type": "fixed",
+      "en": "How often do you brush your teeth?",
+      "ko": "너는 얼마나 자주 이를 닦니?",
+      "koStatus": "draft"
+    },
+    {
+      "no": 32,
+      "unit": 7,
+      "type": "fixed",
+      "en": "Three times a day.",
+      "ko": "하루에 세 번.",
+      "koStatus": "draft"
+    },
+    {
+      "no": 33,
+      "unit": 7,
+      "type": "fixed",
+      "en": "Good for you.",
+      "ko": "잘했네.",
+      "koStatus": "draft"
+    },
+    {
+      "no": 34,
+      "unit": 7,
+      "type": "fixed",
+      "en": "I work out four times a week.",
+      "ko": "나는 일주일에 네 번 운동해.",
+      "koStatus": "draft"
+    },
+    {
+      "no": 35,
+      "unit": 7,
+      "type": "student",
+      "en": "",
+      "ko": "",
+      "prompt": "7단원에서 배운 표현을 직접 골라 적어 보세요"
+    },
+    {
+      "no": 36,
+      "unit": 8,
+      "type": "fixed",
+      "en": "I'm stronger than you.",
+      "ko": "내가 너보다 힘이 세.",
+      "koStatus": "draft"
+    },
+    {
+      "no": 37,
+      "unit": 8,
+      "type": "fixed",
+      "en": "That's not right.",
+      "ko": "그건 맞지 않아.",
+      "koStatus": "draft"
+    },
+    {
+      "no": 38,
+      "unit": 8,
+      "type": "fixed",
+      "en": "The giraffe is faster than the deer.",
+      "ko": "기린이 사슴보다 빨라.",
+      "koStatus": "draft"
+    },
+    {
+      "no": 39,
+      "unit": 8,
+      "type": "fixed",
+      "en": "Which is taller, the deer or the giraffe?",
+      "ko": "사슴과 기린 중 어느 것이 더 키가 크니?",
+      "koStatus": "draft"
+    },
+    {
+      "no": 40,
+      "unit": 8,
+      "type": "student",
+      "en": "",
+      "ko": "",
+      "prompt": "8단원에서 배운 표현을 직접 골라 적어 보세요"
+    }
+  ]
+}

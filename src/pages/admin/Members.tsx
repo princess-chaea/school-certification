@@ -13,7 +13,8 @@ import { classesOf, GRADES } from "../../lib/classes";
 import { useConfig } from "../../lib/config";
 import { programById } from "../../../shared/domain";
 import { PixelIcon } from "../../components/Pixel";
-import { askConfirm, askText } from "../../components/Modal";
+import { askConfirm, askText, notice } from "../../components/Modal";
+import { useSession } from "../../lib/auth";
 
 function download(name: string, text: string, type = "text/csv;charset=utf-8") {
   const url = URL.createObjectURL(new Blob([text], { type }));
@@ -54,6 +55,25 @@ function StaffManager() {
   async function set(id: string, patch: Record<string, unknown>) {
     await updateDoc(doc(db, sp(schoolId, `staff/${id}`)), patch);
   }
+  // 학교 담당자는 최소 1명: 마지막 담당자는 해제·삭제 불가
+  const me = useSession();
+  const myUid = me.kind === "staff" ? me.user.uid : "";
+  const admins = list.filter((s) => s.status === "active" && s.role === "admin");
+  const isLastAdmin = (s: StaffDoc & { id: string }) => s.role === "admin" && s.status === "active" && admins.length <= 1;
+  const LAST_ADMIN = "학교 담당자는 최소 1명 있어야 해요.\n먼저 다른 선생님을 [담당자 지정]한 뒤 해제하세요.";
+  async function toggleAdmin(s: StaffDoc & { id: string }) {
+    if (s.role !== "admin") {
+      if (await askConfirm({ title: "학교 담당자 지정", message: `${s.name} 선생님을 학교 담당자로 지정할까요?\n인증 항목·구성원·설정을 관리할 수 있게 돼요.`, ok: "지정", icon: "gear" })) await set(s.id, { role: "admin" });
+      return;
+    }
+    if (isLastAdmin(s)) return void notice("담당자를 해제할 수 없어요", LAST_ADMIN);
+    const self = s.id === myUid;
+    if (await askConfirm({ title: "학교 담당자 해제", message: self ? "내 학교 담당자 역할을 해제할까요?\n해제하면 인증 항목·구성원·설정 메뉴가 사라져요." : `${s.name} 선생님의 학교 담당자 역할을 해제할까요?`, ok: "해제", danger: true })) await set(s.id, { role: "teacher" });
+  }
+  async function remove(s: StaffDoc & { id: string }) {
+    if (isLastAdmin(s)) return void notice("삭제할 수 없어요", "마지막 학교 담당자예요.\n먼저 다른 선생님을 [담당자 지정]한 뒤 삭제하세요.");
+    if (await askConfirm({ title: "선생님 삭제", message: `${s.name} 선생님을 삭제할까요?\n다시 쓰려면 선생님이 새로 가입해야 해요.`, ok: "삭제", danger: true })) await deleteDoc(doc(db, sp(schoolId, `staff/${s.id}`)));
+  }
   return (
     <div className="stack">
       {pending.length > 0 && <div className="chip warn" style={{ alignSelf: "flex-start" }}>승인 대기 {pending.length}명</div>}
@@ -74,8 +94,8 @@ function StaffManager() {
                   <div className="row" style={{ gap: 6, flexWrap: "nowrap" }}>
                     {s.status !== "active" && <button className="btn ok sm" onClick={() => set(s.id, { status: "active" })}>승인</button>}
                     {s.status === "pending" && <button className="btn ghost sm" onClick={() => set(s.id, { status: "rejected" })}>반려</button>}
-                    {s.status === "active" && <button className="btn ghost sm" onClick={() => set(s.id, { role: s.role === "admin" ? "teacher" : "admin" })}>{s.role === "admin" ? "담당자 해제" : "담당자 지정"}</button>}
-                    <button className="btn ghost sm" onClick={async () => { if (await askConfirm({ title: "선생님 삭제", message: `${s.name} 선생님을 삭제할까요?\n다시 쓰려면 선생님이 새로 가입해야 해요.`, ok: "삭제", danger: true })) await deleteDoc(doc(db, sp(schoolId, `staff/${s.id}`))); }}>삭제</button>
+                    {s.status === "active" && <button className="btn ghost sm" onClick={() => toggleAdmin(s)}>{s.role === "admin" ? "담당자 해제" : "담당자 지정"}</button>}
+                    <button className="btn ghost sm" onClick={() => remove(s)}>삭제</button>
                   </div>
                 </td>
               </tr>

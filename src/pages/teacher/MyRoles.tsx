@@ -1,6 +1,8 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import { httpsCallable } from "firebase/functions";
+import { db, functions } from "../../firebase";
+import { askConfirm } from "../../components/Modal";
 import { doc, serverTimestamp, updateDoc } from "firebase/firestore";
-import { db } from "../../firebase";
 import { useSchoolId, sp } from "../../lib/tenant";
 import { useConfig } from "../../lib/config";
 import { CLASSES_PER_GRADE } from "../../lib/classes";
@@ -15,6 +17,22 @@ export function MyRoles({ staff }: { staff: StaffDoc }) {
   const schoolId = useSchoolId();
   const config = useConfig();
   const [name, setName] = useState(staff.name);
+  // 대비책: 학교 담당자가 아무도 없으면 내가 맡을 수 있음
+  const [noAdmin, setNoAdmin] = useState(false);
+  useEffect(() => {
+    if (staff.role === "admin") return;
+    httpsCallable<unknown, { hasAdmin: boolean }>(functions, "claimAdmin")({ schoolId, check: true }).then((r) => setNoAdmin(!r.data.hasAdmin)).catch(() => undefined);
+  }, [schoolId, staff.role]);
+  async function claim() {
+    if (!(await askConfirm({ title: "학교 담당자 맡기", message: "지금 이 학교에 학교 담당자가 없어요.\n내가 학교 담당자를 맡을까요? 인증 항목·구성원·설정을 관리하게 돼요.", ok: "맡기", icon: "gear" }))) return;
+    try {
+      await httpsCallable(functions, "claimAdmin")({ schoolId });
+      toast("학교 담당자가 됐어요.");
+      setNoAdmin(false);
+    } catch (e) {
+      toast((e as Error).message);
+    }
+  }
   const [homeroom, setHomeroom] = useState(Boolean(staff.homeroom));
   const [grade, setGrade] = useState(staff.grade ?? 3);
   const [classNo, setClassNo] = useState(staff.classNo ?? 1);
@@ -62,8 +80,9 @@ export function MyRoles({ staff }: { staff: StaffDoc }) {
             <span style={{ flex: 1 }}>
               <b>학교 담당자</b> {isAdmin ? <span className="chip ok">지정됨</span> : <span className="chip gray">아님</span>}
               <br />
-              <span className="tiny">학교 담당자 지정·해제는 다른 학교 담당자가 [구성원]에서 해요.</span>
+              <span className="tiny">{noAdmin ? "지금 학교 담당자가 아무도 없어요. 오른쪽 [학교 담당자 맡기]를 누르면 바로 맡을 수 있어요." : "학교 담당자 지정·해제는 다른 학교 담당자가 [구성원]에서 해요."}</span>
             </span>
+            {noAdmin && <button className="btn sm" onClick={claim}>학교 담당자 맡기</button>}
           </div>
         </div>
         <RoleBox icon="users" title="담임" desc="우리 반 학생의 모든 인증 기록 확인" on={homeroom} onToggle={() => setHomeroom(!homeroom)}>

@@ -174,7 +174,7 @@ function TemplateGallery({ onPick, onClose, existing }: { onPick: (t: ProgramTem
           <h1>템플릿 고르기</h1>
           <div className="page-head-right"><button className="btn ghost sm" onClick={onClose}>닫기</button></div>
         </div>
-        <p className="small muted" style={{ marginTop: -6 }}>교육감 인증제 항목과 2025 우수학교들이 공통으로 운영한 항목이에요. 고른 뒤 이름·기준을 우리 학교에 맞게 고칠 수 있어요.</p>
+        <p className="small muted" style={{ marginTop: -6 }}>학교장 인증제에서 많이 운영하는 항목이에요. 고른 뒤 이름·기준을 우리 학교에 맞게 고칠 수 있어요.</p>
         <div className="row" style={{ marginBottom: 12 }}>
           <button className={`choice ${area === "all" ? "on" : ""}`} onClick={() => setArea("all")}>전체</button>
           {AREAS.map((a) => <button key={a} className={`choice ${area === a ? "on" : ""}`} onClick={() => setArea(a)}>{a}</button>)}

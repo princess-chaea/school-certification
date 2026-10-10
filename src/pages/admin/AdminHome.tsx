@@ -13,7 +13,7 @@ import { PixelIcon } from "../../components/Pixel";
 import { GRADES } from "../../lib/classes";
 
 
-/** 관리자: 전교 현황 + 공모 보고서 서식1 수치(참여율·인증률) */
+/** 관리자: 전교 현황 + 학교장 인증제 운영 현황(참여율·인증률) */
 export function AdminHome() {
   const schoolId = useSchoolId();
   const school = useSchool();
@@ -21,21 +21,28 @@ export function AdminHome() {
   const { rows } = useCollection<StudentDoc & { id: string }>(sp(schoolId, "students"), [], [schoolId]);
   const students = (rows ?? []).filter((s) => s.active !== false);
   const real = students.filter((s) => !s.isDemo);
-  const [types, setTypes] = useState<Array<[string, number]>>([]);
+  const [types, setTypes] = useState<Record<string, Array<[string, number]>>>({}); // 항목ID → [활동 종류, 횟수]
   const [usage, setUsage] = useState<{ total?: number } | null>(null);
 
   const PROGRAMS = activePrograms(config);
-  const choiceProgram = PROGRAMS.find((p) => p.choices?.length);
+  // 활동 종류 선택지가 있는 항목마다 종류별 누적 (선택지 있는 항목이 없으면 카드 없음)
+  const choicePrograms = PROGRAMS.filter((p) => p.choices?.length);
+  const choiceKey = choicePrograms.map((p) => `${p.id}:${p.choices!.join(",")}`).join("|");
   useEffect(() => {
-    const list = choiceProgram?.choices ?? [];
     Promise.all(
-      list.map(async (t) => {
-        const q = query(collection(db, sp(schoolId, "submissions")), where("year", "==", school.year), where("program", "==", choiceProgram!.id), where("status", "==", "active"), where("activityType", "==", t));
-        const c = await getCountFromServer(q).catch(() => null);
-        return [t, c?.data().count ?? 0] as [string, number];
+      choicePrograms.map(async (p) => {
+        const counts = await Promise.all(
+          p.choices!.map(async (t) => {
+            const q = query(collection(db, sp(schoolId, "submissions")), where("year", "==", school.year), where("program", "==", p.id), where("status", "==", "active"), where("activityType", "==", t));
+            const c = await getCountFromServer(q).catch(() => null);
+            return [t, c?.data().count ?? 0] as [string, number];
+          }),
+        );
+        return [p.id, counts.filter(([, n]) => n > 0).sort((a, b) => b[1] - a[1])] as const;
       }),
-    ).then((r) => setTypes(r.filter(([, n]) => n > 0).sort((a, b) => b[1] - a[1])));
-  }, [schoolId, school.year, choiceProgram?.id, choiceProgram?.choices]);
+    ).then((r) => setTypes(Object.fromEntries(r)));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [schoolId, school.year, choiceKey]);
   useEffect(() => {
     const d = new Date(Date.now() + 9 * 3600_000).toISOString().slice(0, 10);
     return onSnapshot(doc(db, sp(schoolId, `aiUsage/${d}`)), (s) => setUsage(s.exists() ? (s.data() as { total?: number }) : { total: 0 }), () => setUsage(null));
@@ -45,15 +52,14 @@ export function AdminHome() {
   const participants = base.filter((s) => PROGRAMS.some((p) => countOf(s, p.id) > 0));
   const certified = participants.filter((s) => PROGRAMS.some((p) => isCertified(medalOf(s, p.id))));
   const pct = (a: number, b: number) => (b ? Math.round((a / b) * 1000) / 10 : 0);
-  const maxType = Math.max(1, ...types.map(([, n]) => n));
 
   return (
     <div className="page">
       <PageHeader icon="school" title={`${school.name} 전교 현황`} right={<span className="chip gray hud">{school.year}</span>} />
-      {students.length > real.length && <div className="chip demo" style={{ marginBottom: 10 }}>예시(더미) 학생 {students.length - real.length}명이 포함된 수치예요. 보고서에는 실제 기록만 써 주세요.</div>}
+      {students.length > real.length && <div className="chip demo" style={{ marginBottom: 10 }}>예시(더미) 학생 {students.length - real.length}명이 포함된 수치예요. 실제 운영 현황은 예시 데이터를 지운 뒤 확인해요.</div>}
 
       <div className="card stack" style={{ background: "var(--navy-50)" }}>
-        <b className="icon-text"><PixelIcon name="file" size={20} /> 우수학교 공모 보고서 [서식1] 수치</b>
+        <b className="icon-text"><PixelIcon name="chart" size={20} /> 학교장 인증제 운영 현황</b>
         <div className="grid grid-4">
           <div className="tile"><div className="k">대상 학생 수</div><div className="v">{base.length}명</div><div className="s">인증제 대상 학년 명단 기준</div></div>
           <div className="tile"><div className="k">참여 학생 수</div><div className="v">{participants.length}명</div><div className="s">기록 1건 이상</div></div>
@@ -97,20 +103,26 @@ export function AdminHome() {
       </div>
 
       <div className="grid grid-3" style={{ marginTop: 14 }}>
-        <div className="card stack" style={{ gridColumn: "span 2" }}>
-          <b className="icon-text"><PixelIcon name={choiceProgram?.icon ?? "chart"} size={20} /> {choiceProgram?.name ?? "활동"} 종류 (전교 누적)</b>
-          {types.length === 0 ? <span className="small muted">아직 기록이 없어요.</span> : types.map(([t, n]) => (
-            <div key={t} className="row small" style={{ gap: 8 }}>
-              <span style={{ width: 120, flex: "none" }}>{t}</span>
-              <div className="progress-bar" style={{ flex: 1, height: 14 }}><div style={{ width: `${(n / maxType) * 100}%`, background: "var(--carbon)" }} title={`${t} ${n}회`} /></div>
-              <span className="num" style={{ width: 56, textAlign: "right" }}>{n}회</span>
+        {choicePrograms.map((p) => {
+          const list = types[p.id] ?? [];
+          const max = Math.max(1, ...list.map(([, n]) => n));
+          return (
+            <div key={p.id} className="card stack" style={{ gridColumn: "span 2" }}>
+              <b className="icon-text"><PixelIcon name={p.icon} size={20} /> {p.name} · 활동 종류별 기록 (전교 누적)</b>
+              {list.length === 0 ? <span className="small muted">아직 기록이 없어요.</span> : list.map(([t, n]) => (
+                <div key={t} className="row small" style={{ gap: 8 }}>
+                  <span style={{ width: 120, flex: "none" }}>{t}</span>
+                  <div className="progress-bar" style={{ flex: 1, height: 14 }}><div style={{ width: `${(n / max) * 100}%`, background: "var(--carbon)" }} title={`${t} ${n}회`} /></div>
+                  <span className="num" style={{ width: 56, textAlign: "right" }}>{n}회</span>
+                </div>
+              ))}
             </div>
-          ))}
-        </div>
+          );
+        })}
         <div className="tile">
           <div className="k icon-text"><PixelIcon name="robot" size={18} /> 오늘 AI 사용</div>
           <div className="v">{usage?.total ?? 0}회</div>
-          <div className="s">하루 상한 {config.ai.dailyLimit}회 · 사진 {config.ai.photoModel} · 교사 {config.ai.teacherModel}</div>
+          <div className="s">학생 사진·글 1차 확인과 교사 초안 작성에 쓴 횟수</div>
         </div>
       </div>
     </div>

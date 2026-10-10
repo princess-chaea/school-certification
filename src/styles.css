@@ -351,6 +351,8 @@ mark.hl { background: #fee761; color: inherit; padding: 0 1px; border-radius: 3p
 .px-card { border: 3px solid #1f2240 !important; box-shadow: 4px 4px 0 #1f2240; border-radius: 8px; }
 .px-card:not(:disabled):hover { transform: translate(-1px, -1px); box-shadow: 5px 5px 0 #1f2240; }
 .px-card:not(:disabled):active { transform: translate(2px, 2px); box-shadow: 2px 2px 0 #1f2240; }
+/* 팝업 카드는 마우스를 올려도 움직이지 않게 */
+.px-card.dialog:hover, .px-card.dialog:active { transform: none; box-shadow: 4px 4px 0 #1f2240; }
 .program-card { text-align: left; cursor: pointer; background: #fff; }
 .program-card:disabled { cursor: default; color: inherit; }
 .program-card h3 { margin: 4px 0 2px; font-family: var(--font-title); font-weight: 700; font-size: 1.15rem; }
@@ -397,6 +399,14 @@ mark.hl { background: #fee761; color: inherit; padding: 0 1px; border-radius: 3p
 .icon-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(44px, 1fr)); gap: 6px; padding: 8px; border: 2px dashed var(--line); border-radius: 10px; }
 .icon-choice { display: grid; place-items: center; height: 44px; border: 2px solid transparent; border-radius: 8px; background: #fff; cursor: pointer; }
 .icon-choice.on, .icon-choice:hover { border-color: var(--navy); background: var(--navy-50); }
+.icon-pick-btn { align-self: flex-start; padding: 8px 14px; border: 2px solid var(--line); border-radius: 999px; background: #fff; font: inherit; font-size: .9rem; cursor: pointer; }
+.icon-pick-btn:hover { border-color: var(--navy); background: var(--navy-50); }
+.icon-pick-btn.missing { border-color: var(--red); color: var(--red); font-weight: 700; }
+.evidence-pick { display: inline-flex; align-items: center; gap: 4px; padding: 2px; border-radius: 999px; }
+.evidence-pick.req { background: var(--red-50); box-shadow: inset 0 0 0 2px var(--red); }
+.req-check { display: inline-flex; align-items: center; gap: 4px; padding: 4px 10px 4px 6px; font-size: 0.85rem; font-weight: 700; color: var(--ink-2); cursor: pointer; user-select: none; }
+.req-check input { width: 18px; height: 18px; margin: 0; accent-color: var(--red); cursor: pointer; }
+.evidence-pick.req .req-check { color: var(--red); }
 .icon-grid.labeled { grid-template-columns: repeat(auto-fill, minmax(64px, 1fr)); padding: 6px; }
 .icon-grid.labeled .icon-choice { height: auto; padding: 6px 2px; gap: 2px; }
 .icon-grid.labeled .icon-choice span { font-size: 0.72rem; line-height: 1.2; color: var(--ink-2); text-align: center; word-break: keep-all; }

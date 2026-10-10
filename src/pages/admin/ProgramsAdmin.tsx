@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { addDoc, collection, doc, serverTimestamp, setDoc } from "firebase/firestore";
+import { addDoc, collection, doc, getCountFromServer, query, serverTimestamp, setDoc, where } from "firebase/firestore";
 import { httpsCallable } from "firebase/functions";
 import { db, functions } from "../../firebase";
 import { sp, useSchoolId } from "../../lib/tenant";
@@ -11,6 +11,7 @@ import { PixelIcon } from "../../components/Pixel";
 import { ICONS } from "../../components/pixelArt";
 import { ICON_GROUPS } from "../../components/pixelArtActivities";
 import { toast } from "../../components/ui";
+import { Modal } from "../../components/Modal";
 import { EVIDENCE_LABEL, HAJU_PROGRAMS, type EvidenceKind, type ProgramDef } from "../../../shared/domain";
 import { PROGRAM_TEMPLATES, type ProgramTemplate } from "../../../shared/templates";
 import { GRADES } from "../../lib/classes";
@@ -29,6 +30,8 @@ export function ProgramsAdmin() {
   const [gallery, setGallery] = useState(false);
   const [dirty, setDirty] = useState(false);
   const [busy, setBusy] = useState(false);
+  const [removed, setRemoved] = useState<string[]>([]); // 저장할 때 학생 기록까지 지울 항목
+  const [confirmDel, setConfirmDel] = useState<{ p: ProgramDef; count: number | null } | null>(null);
   useEffect(() => {
     if (!dirty) setPrograms(config.programs);
   }, [config.programs, dirty]);
@@ -58,12 +61,37 @@ export function ProgramsAdmin() {
     setGallery(false);
     setEditing({ ...def, id, enabled: true });
   }
+  /** 삭제 전: 이 항목에 쌓인 학생 기록 수를 세어 경고 팝업 */
+  async function askDelete(p: ProgramDef) {
+    setConfirmDel({ p, count: null });
+    if (!config.programs.some((x) => x.id === p.id)) return setConfirmDel({ p, count: 0 }); // 아직 저장 안 한 새 항목
+    try {
+      const [subs, items] = await Promise.all([
+        getCountFromServer(query(collection(db, sp(schoolId, "submissions")), where("program", "==", p.id))),
+        getCountFromServer(query(collection(db, sp(schoolId, "englishItems")), where("program", "==", p.id))),
+      ]);
+      setConfirmDel({ p, count: subs.data().count + items.data().count });
+    } catch {
+      setConfirmDel({ p, count: -1 }); // 세지 못함 → 기록이 있을 수 있다고 경고
+    }
+  }
+  function doDelete(p: ProgramDef) {
+    change(programs.filter((x) => x.id !== p.id));
+    if (config.programs.some((x) => x.id === p.id)) setRemoved((r) => [...r, p.id]);
+    setConfirmDel(null);
+  }
   async function save() {
     setBusy(true);
     try {
       await setDoc(doc(db, sp(schoolId, "config/app")), { programs, updatedAt: serverTimestamp() }, { merge: true });
+      let deleted = 0;
+      for (const programId of removed.filter((id) => !programs.some((p) => p.id === id))) {
+        const d = await httpsCallable<unknown, { submissions: number; englishItems: number }>(functions, "deleteProgramData")({ schoolId, programId });
+        deleted += d.data.submissions + d.data.englishItems;
+      }
+      setRemoved([]);
       const r = await httpsCallable<unknown, { students: number }>(functions, "recomputeAll")({ schoolId });
-      toast(`저장했어요. 학생 ${r.data.students}명의 진행률을 다시 계산했어요.`);
+      toast(`저장했어요.${deleted ? ` 학생 기록 ${deleted}건을 삭제했어요.` : ""} 학생 ${r.data.students}명의 진행률을 다시 계산했어요.`);
       setDirty(false);
     } catch (e) {
       toast((e as Error).message);
@@ -78,10 +106,10 @@ export function ProgramsAdmin() {
     <div className="page">
       <PageHeader icon="gamepad" title="인증 항목" right={<>
         <button className="btn secondary" onClick={() => setGallery(true)}><PixelIcon name="plus" size={16} /> 템플릿에서 추가</button>
-        <button className="btn ghost" onClick={() => setEditing({ ...PROGRAM_TEMPLATES.find((t) => t.id === "my-own-challenge")!, id: `custom-${Date.now().toString(36)}`, name: "새 인증 항목", templateId: undefined })}>직접 만들기</button>
+        <button className="btn ghost" onClick={() => setEditing({ ...PROGRAM_TEMPLATES.find((t) => t.id === "my-own-challenge")!, id: `custom-${Date.now().toString(36)}`, name: "새 인증 항목", icon: "", templateId: undefined })}>직접 만들기</button>
       </>} />
       <p className="small muted" style={{ marginTop: -4 }}>
-        학생 화면의 [인증하기]에 이 순서대로 보여요. 화면 틀(탭)은 모든 학교가 같고, 항목만 학교마다 달라요. 기존 기록이 있는 항목은 지우기보다 [숨기기]를 권장해요.
+        학생 화면의 [인증하기]에 이 순서대로 보여요. 화면 틀(탭)은 모든 학교가 같고, 항목만 학교마다 달라요. 기록이 있는 항목을 지우면 학생 기록도 함께 삭제되니, 잠시 내리려면 [숨기기]를 써요.
       </p>
       <div className="quest-list">
         {programs.map((p, i) => (
@@ -98,18 +126,38 @@ export function ProgramsAdmin() {
               <button className="btn ghost sm" onClick={() => move(i, 1)} aria-label="아래로">▼</button>
               <button className="btn ghost sm" onClick={() => change(programs.map((x) => (x.id === p.id ? { ...x, enabled: !x.enabled } : x)))}>{p.enabled ? "숨기기" : "보이기"}</button>
               <button className="btn secondary sm" onClick={() => setEditing(p)}>편집</button>
-              <button className="btn ghost sm" onClick={() => confirm(`'${p.name}' 항목을 지울까요? 이미 올린 기록은 남지만 화면에서 보이지 않아요.`) && change(programs.filter((x) => x.id !== p.id))}>삭제</button>
+              <button className="btn ghost sm" onClick={() => askDelete(p)}>삭제</button>
             </div>
           </div>
         ))}
       </div>
       {dirty && (
         <div className="submit-bar">
-          <button className="btn ghost" onClick={() => { setPrograms(config.programs); setDirty(false); }}>되돌리기</button>
+          <button className="btn ghost" onClick={() => { setPrograms(config.programs); setRemoved([]); setDirty(false); }}>되돌리기</button>
           <button className="btn big" disabled={busy} onClick={save}>{busy ? "저장 중…" : "인증 항목 저장"}</button>
         </div>
       )}
       <FeatureRequest />
+      {confirmDel && (
+        <Modal title="인증 항목 삭제" icon="alert" onClose={() => setConfirmDel(null)}>
+          {confirmDel.count === null ? (
+            <p className="small">기록을 세는 중…</p>
+          ) : (
+            <p style={{ whiteSpace: "pre-line", lineHeight: 1.7, margin: 0 }}>
+              {confirmDel.count > 0
+                ? `'${confirmDel.p.name}' 항목에 학생 기록이 ${confirmDel.count}건 있어요.\n삭제하면 학생들의 데이터(사진·글·녹음 등)도 함께 삭제됩니다.\n되돌릴 수 없어요. 잠시 내리려면 [숨기기]를 써요.`
+                : confirmDel.count < 0
+                  ? `'${confirmDel.p.name}' 항목의 기록 수를 확인하지 못했어요.\n기록이 있다면 학생들의 데이터도 함께 삭제됩니다.`
+                  : `'${confirmDel.p.name}' 항목을 삭제할까요?\n아직 학생 기록은 없어요.`}
+            </p>
+          )}
+          <div className="row" style={{ justifyContent: "flex-end", marginTop: 12 }}>
+            <button className="btn ghost" onClick={() => setConfirmDel(null)}>취소</button>
+            <button className="btn danger" disabled={confirmDel.count === null} onClick={() => doDelete(confirmDel.p)}>{confirmDel.count ? "기록까지 삭제" : "삭제"}</button>
+          </div>
+          {!!confirmDel.count && <p className="tiny" style={{ margin: "8px 0 0" }}>[인증 항목 저장]을 눌러야 실제로 삭제돼요.</p>}
+        </Modal>
+      )}
       {gallery && <TemplateGallery onPick={addTemplate} onClose={() => setGallery(false)} existing={programs.map((p) => p.templateId).filter(Boolean) as string[]} />}
     </div>
   );
@@ -120,7 +168,7 @@ function TemplateGallery({ onPick, onClose, existing }: { onPick: (t: ProgramTem
   const list = ALL_TEMPLATES.filter((t) => area === "all" || t.area === area);
   return (
     <div className="sheet-backdrop" onClick={onClose} style={{ alignItems: "center", justifyContent: "center", padding: 16 }}>
-      <div className="card px-card" style={{ width: "min(960px, 100%)", maxHeight: "86dvh", overflow: "auto" }} onClick={(e) => e.stopPropagation()}>
+      <div className="card px-card dialog" style={{ width: "min(960px, 100%)", maxHeight: "86dvh", overflow: "auto" }} onClick={(e) => e.stopPropagation()}>
         <div className="page-head">
           <PixelIcon name="star" size={28} />
           <h1>템플릿 고르기</h1>
@@ -156,7 +204,12 @@ function TemplateGallery({ onPick, onClose, existing }: { onPick: (t: ProgramTem
 
 function ProgramEditor({ initial, onCancel, onSave, existingIds }: { initial: ProgramDef; onCancel: () => void; onSave: (p: ProgramDef) => void; existingIds: string[] }) {
   const [p, setP] = useState<ProgramDef>(initial);
-  const [iconPick, setIconPick] = useState(false);
+  const [iconPick, setIconPick] = useState<"change" | "required" | null>(null);
+  const iconLabel = ICON_GROUPS.flatMap((g) => g.icons).find(([n]) => n === p.icon)?.[1] ?? p.icon;
+  function submit(next = p) {
+    if (!next.icon) return setIconPick("required"); // 아이콘 없이 추가하면 고르는 팝업부터
+    onSave({ ...next, name: next.name.trim() });
+  }
   const set = (patch: Partial<ProgramDef>) => setP((x) => ({ ...x, ...patch }));
   const toggle = <T,>(arr: T[], v: T) => (arr.includes(v) ? arr.filter((x) => x !== v) : [...arr, v]);
   const isNew = !existingIds.includes(initial.id);
@@ -164,30 +217,28 @@ function ProgramEditor({ initial, onCancel, onSave, existingIds }: { initial: Pr
 
   return (
     <div className="page narrow">
-      <PageHeader icon={p.icon} title={isNew ? "인증 항목 추가" : "인증 항목 편집"} right={<button className="btn ghost sm" onClick={onCancel}>취소</button>} />
+      <PageHeader icon={p.icon || "plus"} title={isNew ? "인증 항목 추가" : "인증 항목 편집"} right={<button className="btn ghost sm" onClick={onCancel}>취소</button>} />
       <div className="card px-card stack">
         <div className="row">
-          <button className="icon-box" style={{ width: 64, height: 64, cursor: "pointer" }} onClick={() => setIconPick((v) => !v)} aria-label="아이콘 바꾸기"><PixelIcon name={p.icon} size={44} /></button>
+          <button className="icon-box" style={{ width: 64, height: 64, cursor: "pointer" }} onClick={() => setIconPick("change")} aria-label="아이콘 고르기">{p.icon ? <PixelIcon name={p.icon} size={44} /> : <span className="muted" style={{ fontSize: 28, fontWeight: 800 }}>?</span>}</button>
           <label className="field" style={{ flex: 1 }}><span>항목 이름 (인증서 '인증분야'에 표시)</span><input className="input" value={p.name} onChange={(e) => set({ name: e.target.value })} /></label>
           <label className="field" style={{ width: 120 }}><span>영역</span><input className="input" value={p.area} onChange={(e) => set({ area: e.target.value })} /></label>
         </div>
-        <button className="btn ghost sm" style={{ alignSelf: "flex-start" }} onClick={() => setIconPick((v) => !v)}>{iconPick ? "아이콘 고르기 닫기" : "아이콘 바꾸기"}</button>
+        <button className={`icon-pick-btn ${p.icon ? "" : "missing"}`} onClick={() => setIconPick("change")}>
+          {p.icon ? <>아이콘: <b>{iconLabel}</b> · 바꾸기</> : "아이콘 고르기 (필수)"}
+        </button>
         {iconPick && (
-          <div className="stack" style={{ gap: 8 }}>
-            {ICON_GROUPS.map((g) => (
-              <div key={g.label}>
-                <div className="tiny" style={{ fontWeight: 700, marginBottom: 4 }}>{g.label}</div>
-                <div className="icon-grid labeled">
-                  {g.icons.filter(([n]) => ICONS[n]).map(([n, label]) => (
-                    <button key={n} className={`icon-choice ${p.icon === n ? "on" : ""}`} onClick={() => { set({ icon: n }); setIconPick(false); }} title={label}>
-                      <PixelIcon name={n} size={28} />
-                      <span>{label}</span>
-                    </button>
-                  ))}
-                </div>
-              </div>
-            ))}
-          </div>
+          <IconPicker
+            current={p.icon}
+            required={iconPick === "required"}
+            onClose={() => setIconPick(null)}
+            onPick={(icon) => {
+              const wasRequired = iconPick === "required";
+              set({ icon });
+              setIconPick(null);
+              if (wasRequired) submit({ ...p, icon }); // [항목 추가]에서 열렸으면 고르자마자 이어서 추가
+            }}
+          />
         )}
         <label className="field"><span>학생에게 보이는 설명</span><textarea className="input" value={p.description} onChange={(e) => set({ description: e.target.value })} /></label>
         <div className="field">
@@ -213,15 +264,25 @@ function ProgramEditor({ initial, onCancel, onSave, existingIds }: { initial: Pr
         ) : (
           <>
             <div className="field">
-              <span style={{ fontWeight: 600 }}>올릴 수 있는 증빙 (꼭 필요한 것은 [필수])</span>
+              <span style={{ fontWeight: 600 }}>올릴 수 있는 증빙 (고른 뒤, 꼭 내야 하는 것은 [필수]에 체크)</span>
               <div className="row">
-                {EVIDENCE.map((e) => (
-                  <span key={e} className="row" style={{ gap: 2 }}>
-                    <button className={`choice ${p.evidence.includes(e) ? "on" : ""}`} onClick={() => set({ evidence: toggle(p.evidence, e), required: p.required.filter((r) => r !== e || !p.evidence.includes(e)) })}>{EVIDENCE_LABEL[e]}</button>
-                    {p.evidence.includes(e) && <button className={`choice ${p.required.includes(e) ? "on" : ""}`} style={{ padding: "6px 8px" }} onClick={() => set({ required: toggle(p.required, e) })} title="필수">필수</button>}
-                  </span>
-                ))}
+                {EVIDENCE.map((e) => {
+                  const on = p.evidence.includes(e);
+                  const req = p.required.includes(e);
+                  return (
+                    <span key={e} className={`evidence-pick ${on ? "on" : ""} ${req ? "req" : ""}`}>
+                      <button className={`choice ${on ? "on" : ""}`} onClick={() => set({ evidence: toggle(p.evidence, e), required: p.required.filter((r) => r !== e || !on) })}>{EVIDENCE_LABEL[e]}</button>
+                      {on && (
+                        <label className="req-check">
+                          <input type="checkbox" checked={req} onChange={() => set({ required: toggle(p.required, e) })} />
+                          필수
+                        </label>
+                      )}
+                    </span>
+                  );
+                })}
               </div>
+              <span className="tiny">필수: {p.required.length ? p.required.map((r) => EVIDENCE_LABEL[r]).join(", ") : "없음 (고른 것 중 아무거나 하나만 내도 돼요)"}</span>
             </div>
             <div className="stack" style={{ gap: 6 }}>
               <span style={{ fontWeight: 600 }}>학년별 인증(동장) 기준</span>
@@ -269,7 +330,7 @@ function ProgramEditor({ initial, onCancel, onSave, existingIds }: { initial: Pr
       </div>
       <div className="submit-bar">
         <button className="btn ghost" onClick={onCancel}>취소</button>
-        <button className="btn big" disabled={!valid} onClick={() => onSave({ ...p, name: p.name.trim() })}>{isNew ? "항목 추가" : "적용"}</button>
+        <button className="btn big" disabled={!valid} onClick={() => submit()}>{isNew ? "항목 추가" : "적용"}</button>
       </div>
       <p className="tiny" style={{ textAlign: "right" }}>적용한 뒤 목록 화면에서 [인증 항목 저장]을 눌러야 학생 화면에 반영돼요.</p>
     </div>
@@ -297,5 +358,29 @@ function FeatureRequest() {
         </>
       )}
     </div>
+  );
+}
+
+/** 아이콘 고르기 팝업 (누르면 바로 선택되고 닫힘) */
+function IconPicker({ current, required, onPick, onClose }: { current: string; required: boolean; onPick: (icon: string) => void; onClose: () => void }) {
+  return (
+    <Modal title={required ? "이 항목의 아이콘을 골라 주세요" : "아이콘 고르기"} icon="star" onClose={onClose} wide>
+      {required && <p className="small muted" style={{ marginTop: -6 }}>학생 화면과 인증서 목록에 보이는 아이콘이에요. 고르면 바로 항목이 추가돼요.</p>}
+      <div className="stack" style={{ gap: 10 }}>
+        {ICON_GROUPS.map((g) => (
+          <div key={g.label}>
+            <div className="tiny" style={{ fontWeight: 700, marginBottom: 4 }}>{g.label}</div>
+            <div className="icon-grid labeled">
+              {g.icons.filter(([n]) => ICONS[n]).map(([n, label]) => (
+                <button key={n} className={`icon-choice ${current === n ? "on" : ""}`} onClick={() => onPick(n)} title={label}>
+                  <PixelIcon name={n} size={28} />
+                  <span>{label}</span>
+                </button>
+              ))}
+            </div>
+          </div>
+        ))}
+      </div>
+    </Modal>
   );
 }

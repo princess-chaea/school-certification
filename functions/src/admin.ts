@@ -1,4 +1,6 @@
 import { onCall, HttpsError } from "firebase-functions/v2/https";
+import { getStorage } from "firebase-admin/storage";
+import { logger } from "firebase-functions";
 import { db, REGION, FieldValue, requireStaff, requireSchoolId, loadConfig, loadSchool, sp } from "./common.js";
 import { recomputeStudent } from "./progress.js";
 import { activePrograms, isCertified, taskSetIds, type StudentProgress } from "./shared/domain.js";
@@ -299,4 +301,42 @@ export const recomputeAll = onCall({ region: REGION, timeoutSeconds: 540 }, asyn
   const ids = snap.docs.map((d) => d.id);
   for (let i = 0; i < ids.length; i += 20) await Promise.all(ids.slice(i, i + 20).map((sid) => recomputeStudent(schoolId, sid)));
   return { students: ids.length };
+});
+
+/**
+ * 관리자: 인증 항목을 지울 때 그 항목의 학생 기록도 함께 삭제
+ * (제출 기록·사진/파일/녹음·AI 확인 결과, 영어 문장 연습 기록과 녹음)
+ */
+export const deleteProgramData = onCall({ region: REGION, timeoutSeconds: 540, memory: "512MiB" }, async (req) => {
+  const schoolId = requireSchoolId(req.data);
+  await requireStaff(req, schoolId, true);
+  const programId = String((req.data as { programId?: string })?.programId ?? "");
+  if (!/^[\w-]{1,60}$/.test(programId)) throw new HttpsError("invalid-argument", "항목을 선택하세요.");
+  const bucket = getStorage().bucket();
+  const removeFile = (path?: unknown) => (typeof path === "string" && path ? bucket.file(path).delete({ ignoreNotFound: true }).then(() => undefined) : Promise.resolve());
+  let submissions = 0;
+  let englishItems = 0;
+  for (;;) {
+    const snap = await db.collection(sp(schoolId, "submissions")).where("program", "==", programId).limit(300).get();
+    if (snap.empty) break;
+    await Promise.all(snap.docs.flatMap((d) => [removeFile(d.get("photoPath")), removeFile(d.get("filePath")), removeFile(d.get("audioPath"))]));
+    const batch = db.batch();
+    snap.docs.forEach((d) => {
+      batch.delete(d.ref);
+      batch.delete(db.doc(sp(schoolId, `aiReviews/${d.id}`)));
+    });
+    await batch.commit();
+    submissions += snap.size;
+  }
+  for (;;) {
+    const snap = await db.collection(sp(schoolId, "englishItems")).where("program", "==", programId).limit(300).get();
+    if (snap.empty) break;
+    await Promise.all(snap.docs.flatMap((d) => ((d.get("rounds") ?? []) as Array<{ audioPath?: string }>).map((r) => removeFile(r?.audioPath))));
+    const batch = db.batch();
+    snap.docs.forEach((d) => batch.delete(d.ref));
+    await batch.commit();
+    englishItems += snap.size;
+  }
+  logger.info("program data deleted", { schoolId, programId, submissions, englishItems });
+  return { submissions, englishItems };
 });

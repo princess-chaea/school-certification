@@ -131,7 +131,8 @@ function staffDraft(input: JoinInput, email: string) {
   if (input.subject) {
     const grades = (input.subject.grades ?? []).map(Number).filter((g) => g >= 1 && g <= 6);
     const programs = (input.subject.programs ?? []).map(String).filter((p) => /^[\w-]{1,40}$/.test(p));
-    if (!grades.length || !programs.length) throw new HttpsError("invalid-argument", "전담 학년과 담당 항목을 고르세요.");
+    // 담당 항목은 비어도 됨: 학교에 인증 항목이 생기면 [내 역할]에서 고름
+    if (!grades.length) throw new HttpsError("invalid-argument", "전담 학년을 고르세요.");
     Object.assign(out, { subject: true, grades, programs });
   }
   if (!input.admin && !out.homeroom && !out.subject) throw new HttpsError("invalid-argument", "역할을 하나 이상 고르세요.");

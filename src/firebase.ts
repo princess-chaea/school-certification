@@ -20,7 +20,11 @@ const config = useEmulators
 
 export const app = initializeApp(config);
 export const auth = getAuth(app);
-export const db = initializeFirestore(app, useEmulators ? {} : { localCache: persistentLocalCache({ tabManager: persistentMultipleTabManager() }) });
+// ignoreUndefinedProperties: 직접 만든 인증 항목처럼 선택 칸이 undefined 인 객체도 저장되게
+export const db = initializeFirestore(app, {
+  ignoreUndefinedProperties: true,
+  ...(useEmulators ? {} : { localCache: persistentLocalCache({ tabManager: persistentMultipleTabManager() }) }),
+});
 export const storage = getStorage(app);
 export const functions = getFunctions(app, "asia-northeast3");
 export const googleProvider = new GoogleAuthProvider();

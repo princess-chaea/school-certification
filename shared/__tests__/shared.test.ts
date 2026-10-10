@@ -1,13 +1,16 @@
 import { describe, expect, it } from "vitest";
 import { isCorrectAnswer, diffWords, firstLetterHint, normalizeSentence, speechMatchRatio } from "../typing";
 import { parseNeisSchoolInfo, neisResultMessage, shortSchoolName, mergeSchool, principalTitle } from "../school";
-import { thresholdsFor, medalFor, DEFAULT_CONFIG, computeProgress, nextStep, validateEvidence } from "../domain";
+import { thresholdsFor, medalFor, HAJU_PROGRAMS, DEFAULT_CONFIG as BASE_CONFIG, computeProgress, nextStep, validateEvidence } from "../domain";
 import { PROGRAM_TEMPLATES } from "../templates";
-import { ICONS } from "../../src/components/pixelArt";
+import { ICONS, PALETTE } from "../../src/components/pixelArt";
+import { ICON_GROUPS, ACTIVITY_ICONS } from "../../src/components/pixelArtActivities";
 import task1 from "../../data/english/task1-cartoon.json";
 import g4 from "../../data/english/task3-grade4.json";
 import g5 from "../../data/english/task3-grade5.json";
 import g6 from "../../data/english/task3-grade6.json";
+
+const DEFAULT_CONFIG = { ...BASE_CONFIG, programs: HAJU_PROGRAMS };
 
 describe("typing", () => {
   it("allows case, punctuation, curly quotes and contractions", () => {
@@ -99,6 +102,31 @@ describe("domain", () => {
   });
 });
 
+describe("pixel icons", () => {
+  it("every icon is 16x16 using palette colours", () => {
+    for (const [name, rows] of Object.entries(ICONS)) {
+      expect(rows.length, name).toBe(16);
+      for (const row of rows) {
+        expect(row.length, name).toBe(16);
+        for (const ch of row) expect(ch === "." || ch in PALETTE, `${name}: ${ch}`).toBe(true);
+      }
+    }
+  });
+  it("50 activity icons, none replacing a built-in icon", async () => {
+    const { readFileSync } = await import("node:fs");
+    const base = readFileSync(new URL("../../src/components/pixelArt.ts", import.meta.url), "utf8");
+    const builtIn = [...base.matchAll(/^  (\w+): \[$/gm)].map((m) => m[1]);
+    expect(Object.keys(ACTIVITY_ICONS)).toHaveLength(50);
+    expect(Object.keys(ACTIVITY_ICONS).filter((n) => builtIn.includes(n))).toEqual([]);
+  });
+  it("picker groups only list existing icons, every activity icon included", () => {
+    const names = ICON_GROUPS.flatMap((g) => g.icons.map(([n]) => n));
+    expect(names.filter((n) => !ICONS[n])).toEqual([]);
+    expect(new Set(names).size).toBe(names.length);
+    expect(Object.keys(ACTIVITY_ICONS).filter((n) => !names.includes(n))).toEqual([]);
+  });
+});
+
 describe("data", () => {
   it("set ids match file names used by the app", () => {
     expect((task1 as any).setId).toBe("task1-cartoon");
@@ -143,9 +171,17 @@ describe("roster csv", () => {
     expect(r.rows.find((x) => x.name === "하나")?.number).toBe(2);
   });
   it("reports bad rows and duplicate emails", () => {
-    const r = parseRosterCsv("학년,반,이름,이메일\n7,1,가,a@x.kr\n3,1,,b@x.kr\n3,1,다,a@x.kr\n3,1,라,a@x.kr\n3,1,마,nope\n");
+    const r = parseRosterCsv("학년,반,이름,이메일\n7,1,가,a@x.kr\n3,1,,\n3,1,다,a@x.kr\n3,1,라,a@x.kr\n3,1,마,nope\n");
     expect(r.errors.length).toBe(4);
     expect(r.rows).toHaveLength(1);
+  });
+  it("name is optional for students with an account (they enter it at first login)", () => {
+    const r = parseRosterCsv("학년,반,번호,이름,이메일\n3,1,1,,b@x.kr\n3,1,2,가나,c@x.kr\n");
+    expect(r.errors).toEqual([]);
+    expect(r.rows[0]).toMatchObject({ name: "", email: "b@x.kr", number: 1 });
+    const noNameCol = parseRosterCsv("학년,반,이메일\n3,1,b@x.kr\n3,1,a@x.kr\n");
+    expect(noNameCol.errors).toEqual([]);
+    expect(noNameCol.rows.map((x) => [x.email, x.number])).toEqual([["b@x.kr", 2], ["a@x.kr", 1]]);
   });
   it("handles quotes, tabs, CRLF and BOM", () => {
     expect(parseCsv('﻿"a,b",c\r\nd\te\r\n')).toEqual([["a,b", "c"], ["d", "e"]]);

@@ -102,7 +102,7 @@ export function Overview() {
                   <tr key={s.id} className="clickable" onClick={() => nav(`/student/${encodeURIComponent(s.id)}`)}>
                     <td>{s.classNo}</td>
                     <td className="num">{s.number}</td>
-                    <td><b>{s.name}</b> {s.isDemo && <span className="chip demo">예시</span>}</td>
+                    <td><b>{s.name || <span className="muted">(이름 입력 전)</span>}</b> {s.isDemo && <span className="chip demo">예시</span>}</td>
                     {programs.map((p) => p.grades.includes(s.grade) ? (
                       <td key={p.id}><span className="cell-medal"><MedalBadge medal={medalOf(s, p.id) ?? "none"} size={24} />{countOf(s, p.id)}{p.kind === "tasks" ? "과제" : p.unit}</span></td>
                     ) : <td key={p.id} className="muted">-</td>)}

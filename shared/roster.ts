@@ -1,10 +1,11 @@
-// 학생 명단 CSV (학년, 반, [번호], 이름, 이메일) 파싱·검증
+// 학생 명단 CSV (학년, 반, [번호], [이름], 이메일) 파싱·검증
+// 이름은 선택: 비워 두면 학생이 첫 로그인 때 직접 입력한다 (이후 수정은 담임·학교 담당자만)
 
 export interface RosterRow {
   grade: number;
   classNo: number;
   number: number;
-  name: string;
+  name: string; // 없으면 "" (계정 있는 학생만 허용, 첫 로그인 때 입력)
   email: string; // 소문자, 없으면 ""
 }
 
@@ -13,7 +14,7 @@ export interface RosterParseResult {
   errors: string[];
 }
 
-export const ROSTER_TEMPLATE = "﻿학년,반,번호,이름,이메일\n3,1,1,홍길동,263101@haju.es.kr\n3,1,2,김하주,263102@haju.es.kr\n1,1,1,이하늘,\n";
+export const ROSTER_TEMPLATE = "﻿학년,반,번호,이름,이메일\n3,1,1,홍길동,263101@haju.es.kr\n3,1,2,,263102@haju.es.kr\n1,1,1,이하늘,\n";
 
 /** 따옴표·쉼표를 처리하는 간단한 CSV 파서 */
 export function parseCsv(text: string): string[][] {
@@ -66,9 +67,10 @@ export function parseRosterCsv(text: string, emailDomainForIdOnly?: string): Ros
   if (!table.length) return { rows: [], errors: ["내용이 비어 있어요."] };
   const header = table[0].map((h) => HEADER_ALIASES[h.replace(/\s/g, "").toLowerCase()] ?? HEADER_ALIASES[h.replace(/\s/g, "")]);
   const col = (k: keyof RosterRow) => header.indexOf(k);
-  for (const k of ["grade", "classNo", "name"] as const) {
-    if (col(k) < 0) errors.push(`'${k === "grade" ? "학년" : k === "classNo" ? "반" : "이름"}' 열이 없어요. 첫 줄은 학년,반,이름,이메일 이어야 해요.`);
+  for (const k of ["grade", "classNo"] as const) {
+    if (col(k) < 0) errors.push(`'${k === "grade" ? "학년" : "반"}' 열이 없어요. 첫 줄은 학년,반,번호,이름,이메일 이어야 해요.`);
   }
+  if (col("name") < 0 && col("email") < 0) errors.push("'이름'이나 '이메일' 열이 있어야 해요. 첫 줄은 학년,반,번호,이름,이메일 이어야 해요.");
   if (errors.length) return { rows: [], errors };
 
   const rows: RosterRow[] = [];
@@ -77,13 +79,13 @@ export function parseRosterCsv(text: string, emailDomainForIdOnly?: string): Ros
     const line = i + 2;
     const grade = Number(String(r[col("grade")] ?? "").replace(/[^0-9]/g, ""));
     const classNo = Number(String(r[col("classNo")] ?? "").replace(/[^0-9]/g, ""));
-    const name = (r[col("name")] ?? "").trim();
+    const name = col("name") >= 0 ? (r[col("name")] ?? "").trim() : "";
     let email = col("email") >= 0 ? (r[col("email")] ?? "").trim().toLowerCase() : "";
     if (email && !email.includes("@") && emailDomainForIdOnly) email = `${email}@${emailDomainForIdOnly}`;
     const number = col("number") >= 0 ? Number(String(r[col("number")] ?? "").replace(/[^0-9]/g, "")) || 0 : 0;
     if (!(grade >= 1 && grade <= 6)) return void errors.push(`${line}번째 줄: 학년이 올바르지 않아요.`);
     if (!(classNo >= 1 && classNo <= 20)) return void errors.push(`${line}번째 줄: 반이 올바르지 않아요.`);
-    if (!name) return void errors.push(`${line}번째 줄: 이름이 비어 있어요.`);
+    if (!name && !email) return void errors.push(`${line}번째 줄: 이름과 이메일이 모두 비어 있어요. 계정 없는 학생은 이름이 필요해요.`);
     if (email && !EMAIL_RE.test(email)) return void errors.push(`${line}번째 줄: 이메일 형식이 올바르지 않아요 (${email}).`);
     if (email && seenEmail.has(email)) return void errors.push(`${line}번째 줄: 이메일이 ${seenEmail.get(email)}번째 줄과 겹쳐요.`);
     if (email) seenEmail.set(email, line);
@@ -100,7 +102,7 @@ export function parseRosterCsv(text: string, emailDomainForIdOnly?: string): Ros
     if (list.some((r) => !r.number)) {
       const used = new Set(list.filter((r) => r.number).map((r) => r.number));
       let n = 1;
-      [...list].filter((r) => !r.number).sort((a, b) => a.name.localeCompare(b.name, "ko")).forEach((r) => {
+      [...list].filter((r) => !r.number).sort((a, b) => (a.name || a.email).localeCompare(b.name || b.email, "ko")).forEach((r) => {
         while (used.has(n)) n++;
         r.number = n;
         used.add(n);

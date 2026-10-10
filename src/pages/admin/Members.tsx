@@ -126,7 +126,7 @@ function RosterUpload() {
       <div className="card stack">
         <b>학생 명단 올리기 ({school.year}학년도)</b>
         <ol className="small muted" style={{ lineHeight: 1.8, margin: 0, paddingLeft: 18 }}>
-          <li>양식을 내려받아 <b>학년, 반, 번호(선택), 이름, 이메일</b>을 채워요. 학교 구글 계정 관리 화면에서 받은 전체 목록을 붙여 넣으면 편해요.</li>
+          <li>양식을 내려받아 <b>학년, 반, 번호(선택), 이름(선택), 이메일</b>을 채워요. 이름을 비우면 학생이 첫 로그인 때 직접 입력하고, 그 뒤에는 담임 선생님만 고칠 수 있어요. 학교 구글 계정 관리 화면에서 받은 전체 목록을 붙여 넣으면 편해요.</li>
           <li>태블릿·계정이 없는 학생(1~2학년 등)은 이메일을 비워 두면 돼요. 담임이 관찰 기록으로 체크해요.</li>
           <li>CSV(쉼표로 구분)로 저장해서 올려요. 이미 있는 학생은 학년·반·이름이 갱신돼요.</li>
         </ol>
@@ -151,7 +151,7 @@ function RosterUpload() {
           <div className="table-wrap" style={{ maxHeight: 320 }}>
             <table className="table">
               <thead><tr><th>학년</th><th>반</th><th>번호</th><th>이름</th><th>이메일</th></tr></thead>
-              <tbody>{rows.slice(0, 200).map((r, i) => <tr key={i}><td>{r.grade}</td><td>{r.classNo}</td><td className="num">{r.number}</td><td>{r.name}</td><td className="small">{r.email || <span className="muted">(계정 없음)</span>}</td></tr>)}</tbody>
+              <tbody>{rows.slice(0, 200).map((r, i) => <tr key={i}><td>{r.grade}</td><td>{r.classNo}</td><td className="num">{r.number}</td><td>{r.name || <span className="muted">(첫 로그인 때 입력)</span>}</td><td className="small">{r.email || <span className="muted">(계정 없음)</span>}</td></tr>)}</tbody>
             </table>
           </div>
           <label className="row small" style={{ gap: 6 }}><input type="checkbox" checked={deactivate} onChange={(e) => setDeactivate(e.target.checked)} /> 이 파일에 없는 기존 학생은 비활성(전학 등)으로 바꾸기</label>
@@ -184,7 +184,7 @@ function ClassRoster() {
             {(rows ?? []).map((s) => (
               <tr key={s.id} style={s.active === false ? { opacity: 0.5 } : undefined}>
                 <td className="num">{s.number}</td>
-                <td><b>{s.name}</b> {s.isDemo && <span className="chip demo">예시</span>}</td>
+                <td><b>{s.name || <span className="muted">(이름 입력 전)</span>}</b> {s.isDemo && <span className="chip demo">예시</span>}</td>
                 <td className="small">{s.email || "(계정 없음)"}</td>
                 <td>{s.hasAccount ? <PixelIcon name="check" size={16} /> : "-"}</td>
                 <td>{s.active === false ? "비활성" : "활성"}</td>

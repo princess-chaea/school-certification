@@ -24,7 +24,7 @@ const Ctx = createContext<{ session: Session; refresh: () => void }>({ session: 
 export const useSession = () => useContext(Ctx).session;
 export const useRefreshSession = () => useContext(Ctx).refresh;
 
-/** 어느 버튼으로 로그인했는지 (교사 로그인 → 명단에 없어도 학생 안내 없이 교사 등록 화면) */
+/** 어느 버튼으로 로그인했는지 (회원가입(교사) → 명단에 없어도 학생 안내 없이 교사 등록 화면) */
 export type LoginIntent = "teacher" | "student";
 const INTENT_KEY = "loginIntent";
 export function loginIntent(): LoginIntent {

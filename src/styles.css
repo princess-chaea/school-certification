@@ -397,3 +397,6 @@ mark.hl { background: #fee761; color: inherit; padding: 0 1px; border-radius: 3p
 .icon-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(44px, 1fr)); gap: 6px; padding: 8px; border: 2px dashed var(--line); border-radius: 10px; }
 .icon-choice { display: grid; place-items: center; height: 44px; border: 2px solid transparent; border-radius: 8px; background: #fff; cursor: pointer; }
 .icon-choice.on, .icon-choice:hover { border-color: var(--navy); background: var(--navy-50); }
+.icon-grid.labeled { grid-template-columns: repeat(auto-fill, minmax(64px, 1fr)); padding: 6px; }
+.icon-grid.labeled .icon-choice { height: auto; padding: 6px 2px; gap: 2px; }
+.icon-grid.labeled .icon-choice span { font-size: 0.72rem; line-height: 1.2; color: var(--ink-2); text-align: center; word-break: keep-all; }

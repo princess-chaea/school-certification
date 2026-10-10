@@ -70,7 +70,7 @@ export interface AppConfig {
 const ALL = [1, 2, 3, 4, 5, 6];
 const same = (n: number, grades = ALL) => Object.fromEntries(grades.map((g) => [String(g), n]));
 
-/** 하주초 기본 항목 (새 학교는 템플릿에서 고른다) */
+/** 하주초 항목 예시 (기본값 아님: 새 학교는 비어 있고, 학교 담당자가 템플릿에서 골라 만든다) */
 export const HAJU_PROGRAMS: ProgramDef[] = [
   {
     id: "reading", name: "도전! 독서 마라톤", area: "인문", icon: "book", kind: "evidence", enabled: true, grades: ALL, unit: "편",
@@ -103,7 +103,7 @@ export const HAJU_PROGRAMS: ProgramDef[] = [
 
 export const DEFAULT_CONFIG: AppConfig = {
   medalMultipliers: { bronze: 1, silver: 1.5, gold: 2 },
-  programs: HAJU_PROGRAMS,
+  programs: [],
   ai: { enabled: true, photoModel: "claude-haiku-5-5", teacherModel: "claude-sonnet-5-5", dailyLimit: 3000 },
   certificate: {
     title: "학교장 인증서",
@@ -123,7 +123,7 @@ export function mergeConfig(partial?: Partial<AppConfig> | null): AppConfig {
     medalMultipliers: { ...DEFAULT_CONFIG.medalMultipliers, ...partial.medalMultipliers },
     ai: { ...DEFAULT_CONFIG.ai, ...partial.ai },
     certificate: { ...DEFAULT_CONFIG.certificate, ...partial.certificate },
-    programs: Array.isArray(partial.programs) ? partial.programs.map(normalizeProgram) : DEFAULT_CONFIG.programs,
+    programs: Array.isArray(partial.programs) ? partial.programs.map(normalizeProgram) : [],
   };
 }
 

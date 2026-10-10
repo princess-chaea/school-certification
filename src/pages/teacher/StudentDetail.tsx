@@ -17,12 +17,15 @@ import { useEffect } from "react";
 import { onSnapshot } from "firebase/firestore";
 import { db } from "../../firebase";
 import { useScope } from "./scope";
+import { useSession } from "../../lib/auth";
+import { doc as fsDoc, serverTimestamp, updateDoc } from "firebase/firestore";
 
 export function StudentDetail() {
   const { sid = "" } = useParams();
   const schoolId = useSchoolId();
   const config = useConfig();
   const { scope } = useScope();
+  const session = useSession();
   const [student, setStudent] = useState<StudentDoc | null>(null);
   const [zoom, setZoom] = useState<string | null>(null);
   const [draft, setDraft] = useState<string | null>(null);
@@ -45,11 +48,24 @@ export function StudentDetail() {
   }
 
   if (!student) return <div className="page">불러오는 중…</div>;
+  // 이름 고치기: 담임(우리 반)·학교 담당자만 (학생은 첫 로그인 때 한 번만 입력)
+  const me = session.kind === "staff" ? session.staff : null;
+  const canRename = !!me && (me.role === "admin" || (me.homeroom === true && me.grade === student.grade && me.classNo === student.classNo));
+  async function rename() {
+    const n = prompt("학생 이름", student!.name)?.trim();
+    if (!n || n === student!.name) return;
+    try {
+      await updateDoc(fsDoc(db, sp(schoolId, `students/${sid}`)), { name: n, updatedAt: serverTimestamp() });
+      toast("이름을 고쳤어요.");
+    } catch (e) {
+      toast("고치지 못했어요: " + (e as Error).message);
+    }
+  }
   const p = student.progress ?? {};
   return (
     <div className="page">
       <Lightbox url={zoom} onClose={() => setZoom(null)} />
-      <PageHeader back="/" title={`${student.grade}-${student.classNo} ${student.number}번 ${student.name}`} right={<span className="small muted">{student.email || "계정 없음"}</span>} />
+      <PageHeader back="/" title={`${student.grade}-${student.classNo} ${student.number}번 ${student.name || "(이름 입력 전)"}`} right={<><span className="small muted">{student.email || "계정 없음"}</span>{canRename && <button className="btn ghost sm" onClick={rename}>이름 고치기</button>}</>} />
       <div className="grid grid-3">
         {activePrograms(config, student.grade).map((x) => <ProgramCard key={x.id} program={x} progress={p[x.id] ?? { count: 0, medal: "none", thresholds: thresholdsFor(config, x, student.grade)! }} />)}
       </div>

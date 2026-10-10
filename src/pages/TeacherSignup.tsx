@@ -87,6 +87,12 @@ export function TeacherSignup({ user, existing, isSuper, onSuper }: { user: User
 
   async function pick(s: SchoolHit) {
     setSchool(s);
+    // 아직 개설 안 된 학교는 인증 항목이 비어 있으므로 서버에 묻지 않고 바로 보여 줌
+    if (!s.opened) {
+      setMeta({ opened: false, joinPolicy: "open", programs: [] });
+      setAdmin(true); // 새 학교는 만든 사람이 학교 담당자
+      return;
+    }
     setMeta(null);
     try {
       const res = await httpsCallable<{ schoolId: string }, SchoolMeta>(functions, "schoolPrograms")({ schoolId: s.schoolCode });
@@ -129,7 +135,7 @@ export function TeacherSignup({ user, existing, isSuper, onSuper }: { user: User
         </div>
         <div className="row" style={{ justifyContent: "center" }}>
           <button className="btn" onClick={() => logout()}>다른 계정으로 로그인</button>
-          <button className="btn ghost" onClick={() => { setLoginIntent("teacher"); setAsTeacher(true); }}>교사예요</button>
+          <button className="btn ghost" onClick={() => { setLoginIntent("teacher"); setAsTeacher(true); }}>교사 회원가입</button>
         </div>
       </Centered>
     );

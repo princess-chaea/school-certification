@@ -89,7 +89,7 @@ export function SentenceSetPage({ student, program, task }: { student: StudentDo
               }}
             >
               <div className="row between">
-                <span className="no hud">#{s.no}{s.unit ? ` · ${s.unit}단원` : ""}</span>
+                <span className="no hud">{set.itemLabel ? `${set.itemLabel} ${s.no}` : `#${s.no}`}{s.unit ? ` · ${s.unit}단원` : ""}</span>
                 {status === "checked" && <PixelIcon name="check" size={18} />}
                 {status === "requested" && <PixelIcon name="clock" size={18} />}
                 {status === "retry" && <PixelIcon name="alert" size={18} />}

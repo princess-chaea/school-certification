@@ -66,7 +66,8 @@ service cloud.firestore {
 
       // 학교 정보(이름·로고·학교장)는 로그인 전후 화면에 쓰이므로 공개 읽기
       allow read: if true;
-      allow update: if isAdmin() && onlyChanges(['name', 'shortName', 'principalName', 'logoUrl', 'sealUrl', 'studentDomain', 'joinPolicy', 'updatedAt']);
+      allow update: if isAdmin() && onlyChanges(['name', 'shortName', 'principalName', 'logoUrl', 'sealUrl', 'studentDomain', 'joinPolicy', 'slogan', 'updatedAt'])
+        && (!('slogan' in request.resource.data) || (request.resource.data.slogan is string && request.resource.data.slogan.size() <= 30));
       allow create, delete: if false;
 
       match /config/{docId} {

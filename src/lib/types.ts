@@ -116,6 +116,7 @@ export interface SentenceItem {
   koStatus?: "draft" | "approved";
   alternatives?: string[];
   prompt?: string;
+  video?: string; // 이 문장을 다루는 영상(차시) 링크
 }
 
 export interface SentenceSet {
@@ -124,6 +125,9 @@ export interface SentenceSet {
   grades: number[];
   goal: number;
   items: SentenceItem[];
+  itemLabel?: string; // 문장 번호 대신 쓰는 이름 (예: "Day")
+  videoName?: string; // 영상 강좌 이름 (예: EBSe 카툰 잉글리시 2.0)
+  videoListUrl?: string; // 차시별 링크가 없을 때 여는 강좌 목록
 }
 
 export type { Medal, ProgramId };

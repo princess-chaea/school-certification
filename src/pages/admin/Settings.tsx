@@ -1,3 +1,4 @@
+import { DEFAULT_SLOGAN } from "../../../shared/school";
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { doc, serverTimestamp, setDoc, updateDoc } from "firebase/firestore";
 import { getDownloadURL, ref, uploadBytes } from "firebase/storage";
@@ -35,6 +36,7 @@ export function Settings() {
   const [cfg, setCfg] = useState<AppConfig>(config);
   const [principal, setPrincipal] = useState(school.principalName);
   const [domain, setDomain] = useState(school.studentDomain);
+  const [slogan, setSlogan] = useState(school.slogan ?? "");
   const [joinPolicy, setJoinPolicy] = useState<"open" | "approval">(((school as { joinPolicy?: string }).joinPolicy as "open" | "approval") ?? "open");
   const [busy, setBusy] = useState<string | null>(null);
   const logoRef = useRef<HTMLInputElement>(null);
@@ -43,7 +45,8 @@ export function Settings() {
   useEffect(() => {
     setPrincipal(school.principalName);
     setDomain(school.studentDomain);
-  }, [school.principalName, school.studentDomain]);
+    setSlogan(school.slogan ?? "");
+  }, [school.principalName, school.studentDomain, school.slogan]);
 
   async function run(label: string, fn: () => Promise<string | void>) {
     setBusy(label);
@@ -91,6 +94,10 @@ export function Settings() {
             <input ref={logoRef} type="file" accept="image/*" hidden onChange={(e) => uploadAsset("logo", e.target.files?.[0])} />
           </div>
         </div>
+        <label className="field"><span>우리 학교 인증제 문구 (모든 화면 맨 위 큰 글씨 · 학생에게도 보여요)</span>
+          <input className="input" value={slogan} maxLength={30} onChange={(e) => setSlogan(e.target.value)} placeholder={DEFAULT_SLOGAN} />
+          <span className="tiny">비워 두면 “{DEFAULT_SLOGAN}”. 아랫줄에는 “{school.shortName} 학교장 인증제”가 붙어요.</span>
+        </label>
         <label className="field"><span>학교장 성함 (인증서: “{school.name}장 {principal || "○○○"}”)</span>
           <input className="input" value={principal} onChange={(e) => setPrincipal(e.target.value)} placeholder="예: 홍길동" />
         </label>
@@ -111,7 +118,7 @@ export function Settings() {
             <button className={`choice ${joinPolicy === "approval" ? "on" : ""}`} onClick={() => setJoinPolicy("approval")}>학교 담당자 승인 후 사용 (권장: 실제 학생 데이터 운영 시)</button>
           </div>
         </div>
-        <div><button className="btn" disabled={busy === "school"} onClick={() => run("school", async () => { await updateDoc(doc(db, sp(schoolId)), { principalName: principal.trim(), studentDomain: domain, joinPolicy, updatedAt: serverTimestamp() }); })}>학교 정보 저장</button></div>
+        <div><button className="btn" disabled={busy === "school"} onClick={() => run("school", async () => { await updateDoc(doc(db, sp(schoolId)), { principalName: principal.trim(), studentDomain: domain, joinPolicy, slogan: slogan.trim(), updatedAt: serverTimestamp() }); })}>학교 정보 저장</button></div>
       </Section>
 
       <Section title="금·은·동 단계 (모든 증빙형 항목 공통)">

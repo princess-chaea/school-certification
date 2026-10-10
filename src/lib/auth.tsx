@@ -24,7 +24,26 @@ const Ctx = createContext<{ session: Session; refresh: () => void }>({ session: 
 export const useSession = () => useContext(Ctx).session;
 export const useRefreshSession = () => useContext(Ctx).refresh;
 
-export async function login() {
+/** 어느 버튼으로 로그인했는지 (교사 로그인 → 명단에 없어도 학생 안내 없이 교사 등록 화면) */
+export type LoginIntent = "teacher" | "student";
+const INTENT_KEY = "loginIntent";
+export function loginIntent(): LoginIntent {
+  try {
+    return sessionStorage.getItem(INTENT_KEY) === "teacher" ? "teacher" : "student";
+  } catch {
+    return "student";
+  }
+}
+export function setLoginIntent(intent: LoginIntent) {
+  try {
+    sessionStorage.setItem(INTENT_KEY, intent);
+  } catch {
+    /* 저장 못 해도 로그인은 계속 */
+  }
+}
+
+export async function login(intent: LoginIntent = "student") {
+  setLoginIntent(intent);
   await signInWithPopup(auth, googleProvider);
 }
 export async function logout() {

@@ -2,7 +2,7 @@ import { useState } from "react";
 import type { User } from "firebase/auth";
 import { httpsCallable } from "firebase/functions";
 import { functions } from "../firebase";
-import { logout, useRefreshSession } from "../lib/auth";
+import { loginIntent, logout, setLoginIntent, useRefreshSession } from "../lib/auth";
 import { CLASSES_PER_GRADE } from "../lib/classes";
 import type { StaffDoc } from "../lib/types";
 import { PixelIcon } from "../components/Pixel";
@@ -35,6 +35,8 @@ export function TeacherSignup({ user, existing, isSuper, onSuper }: { user: User
   const [programs, setPrograms] = useState<string[]>(existing?.programs ?? []);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
+  // 학생 로그인 버튼으로 들어왔는데 명단에 없는 계정 → 먼저 학생 안내, [교사예요]를 눌러야 등록 화면
+  const [asTeacher, setAsTeacher] = useState(Boolean(existing) || isSuper || loginIntent() === "teacher");
 
   const toggle = <T,>(arr: T[], v: T) => (arr.includes(v) ? arr.filter((x) => x !== v) : [...arr, v]);
   const subjectOk = !subject || (grades.length > 0 && programs.length > 0);
@@ -88,20 +90,35 @@ export function TeacherSignup({ user, existing, isSuper, onSuper }: { user: User
     }
   }
 
+  if (!asTeacher) {
+    return (
+      <Centered>
+        <div className="login-mark" aria-hidden="true"><PixelIcon name="alert" size={64} /></div>
+        <h1 style={{ margin: 0 }}>학교 명단에 없는 계정이에요</h1>
+        <div className="muted">{user.email}</div>
+        <div className="small" style={{ lineHeight: 1.7 }}>
+          <b>학생</b>이라면 학교에서 받은 구글 계정으로 로그인했는지 확인하고,
+          <br />
+          그래도 안 되면 담임 선생님께 명단 등록을 요청해 주세요.
+        </div>
+        <div className="row" style={{ justifyContent: "center" }}>
+          <button className="btn" onClick={() => logout()}>다른 계정으로 로그인</button>
+          <button className="btn ghost" onClick={() => { setLoginIntent("teacher"); setAsTeacher(true); }}>교사예요</button>
+        </div>
+      </Centered>
+    );
+  }
+
   return (
     <div className="page narrow">
       <div className="page-head" style={{ marginTop: 12 }}>
-        <h1 className="row" style={{ gap: 10 }}><PixelIcon name="users" size={30} /> 선생님 가입</h1>
+        <h1 className="row" style={{ gap: 10 }}><PixelIcon name="users" size={30} /> 교사 등록</h1>
         <div className="page-head-right">
           {isSuper && <button className="btn sm" onClick={onSuper}><PixelIcon name="gear" size={18} /> 시스템</button>}
           <button className="btn ghost sm" onClick={() => logout()}>로그아웃</button>
         </div>
       </div>
-      <p className="muted small">{user.email} · 학교를 고르고 맡은 역할을 모두 체크하세요. 처음 등록하는 학교면 그 자리에서 만들어지고, 만든 선생님이 학교 담당자가 돼요.</p>
-      <div className="card flat small row" style={{ background: "var(--warn-50)", marginBottom: 12, gap: 10, flexWrap: "nowrap" }}>
-        <PixelIcon name="alert" size={22} />
-        <span><b>학생인가요?</b> 이 계정은 아직 학교 명단에 없어요. 담임 선생님께 명단 등록을 요청한 뒤 다시 로그인해 주세요.</span>
-      </div>
+      <p className="muted small">{user.email} · 처음 한 번만 학교와 맡은 역할을 고르면 돼요. 처음 등록하는 학교면 그 자리에서 만들어지고, 만든 선생님이 학교 담당자가 돼요.</p>
 
       <div className="card stack">
         <b>① 학교 찾기</b>

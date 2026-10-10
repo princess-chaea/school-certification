@@ -40,9 +40,16 @@ firebase deploy --only firestore,storage,functions,hosting --project school-cert
 gsutil cors set storage.cors.json gs://school-certification-e1a6c.firebasestorage.app
 ```
 
+## 2-1. Vercel (화면 배포)
+
+- 프로젝트: lees-projects-65bdf891/school-certification → https://school-certification.vercel.app (main에 푸시하면 자동 배포)
+- Environment Variables: `VITE_FIREBASE_API_KEY`, `VITE_FIREBASE_AUTH_DOMAIN`, `VITE_FIREBASE_PROJECT_ID`, `VITE_FIREBASE_STORAGE_BUCKET`, `VITE_FIREBASE_MESSAGING_SENDER_ID`, `VITE_FIREBASE_APP_ID` (Firebase 콘솔 → 프로젝트 설정 → 웹 앱). 값을 넣거나 바꾼 뒤에는 **Redeploy**해야 반영된다(빌드할 때 들어감)
+- Firebase 콘솔 → Authentication → 설정 → 승인된 도메인에 `school-certification.vercel.app` 추가
+- 데이터베이스 규칙·Cloud Functions·Storage는 Firebase에 따로 배포한다(아래)
+
 ## 3. 첫 학교(하주초) 열기
 
-1. 배포 주소(`https://school-certification-e1a6c.web.app`)에서 **운영자 계정**(dltjdrms320@gmail.com 등)으로 로그인
+1. 배포 주소(`https://school-certification.vercel.app`, Vercel이 main 브랜치를 자동 배포)에서 **운영자 계정**(dltjdrms320@gmail.com 등)으로 로그인
 2. `node scripts/set-super-admin.mjs <운영자 이메일>` → 운영자 지정
 3. 같은 계정으로 오른쪽 위 [선생님 가입] → NEIS에서 "하주초등학교" 검색 → 역할 체크(학교 담당자·담임·전담 중복 가능) → 바로 학교가 만들어지고 **학교 담당자**가 됨
 4. 학교 담당자 → [설정]: 교표·**직인(배경 투명 PNG 권장)** 등록, 학교장 성함 입력, 직인 크기 조절 / [설정 → 데이터 도구] 영어 문장 세트 올리기

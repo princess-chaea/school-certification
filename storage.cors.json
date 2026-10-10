@@ -1,6 +1,6 @@
 [
   {
-    "origin": ["https://school-certification-e1a6c.web.app", "https://school-certification-e1a6c.firebaseapp.com"],
+    "origin": ["https://school-certification.vercel.app", "https://school-certification-e1a6c.web.app", "https://school-certification-e1a6c.firebaseapp.com"],
     "method": ["GET"],
     "maxAgeSeconds": 3600
   }

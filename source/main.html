@@ -1,0 +1,599 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <title>화북초 학교장 인증제 - 전체 학생 보기 및 교사 로그인</title>
+  <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;700&display=swap" rel="stylesheet">
+  <style>
+    body {
+      font-family: 'Noto Sans KR', sans-serif;
+      padding: 10px 20px;
+      max-width: 1200px;
+      margin: 0 auto;
+      background-color: #f4f4f4; /* 배경색 */
+      color: #333; /* 기본 텍스트 색상 */
+    }
+
+    #header {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 16px;
+      margin-bottom: 20px;
+      background-color: #fff; /* 헤더 영역 배경색 */
+      padding: 15px 20px;
+      border-radius: 10px;
+      box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+    }
+
+    #header img {
+      height: 70px;
+      border-radius: 50%; /* 로고 둥글게 */
+      border: 3px solid #4CAF50;
+    }
+
+    #header h1 {
+      font-size: 2.4em;
+      margin: 0;
+      color: #333;
+    }
+
+    /* 공지사항 스타일 */
+    #noticeBox {
+      background: #fef3c7;
+      padding: 14px;
+      border-radius: 8px;
+      margin-bottom: 25px; /* 공지사항 섹션 하단 마진 */
+      font-weight: bold;
+      font-size: 1em;
+      display: none;
+      width: 100%;
+      box-sizing: border-box;
+      box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+      line-height: 1.6;
+      border: 1px solid #ffe082; /* 연한 노란색 테두리 */
+    }
+
+    /* 학생 카드 그리드 */
+    .student-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+      gap: 20px;
+    }
+
+    .student-card {
+      width: 100%;
+      padding: 16px 10px;
+      border: 3px solid #ccc;
+      border-radius: 12px;
+      background-color: #f9f9f9;
+      text-align: center;
+      cursor: pointer;
+      box-sizing: border-box;
+      transition: transform 0.3s ease, box-shadow 0.3s ease;
+      box-shadow: 0 0 10px rgba(0,0,0,0.2);
+    }
+
+    .student-card:hover {
+      transform: scale(1.05) rotate(1deg);
+      box-shadow: 0 0 20px rgba(0,0,0,0.3);
+    }
+
+    .student-photo {
+      width: 80px;
+      height: 80px;
+      border-radius: 50%;
+      object-fit: cover;
+      transition: transform 0.3s ease;
+      margin-bottom: 6px; /* 이미지 아래 마진 */
+      border: 2px solid #ddd; /* 사진 테두리 */
+    }
+
+    .student-photo:hover {
+      transform: scale(1.15);
+      box-shadow: 0 0 8px rgba(0, 0, 0, 0.2);
+      z-index: 1;
+    }
+
+    .gold-border {
+      border-color: gold;
+      box-shadow: 0 0 10px rgba(255,215,0,0.5);
+    }
+
+    .medals {
+      margin-top: 8px;
+      font-size: 0.9em;
+      color: #666;
+    }
+
+    .rank {
+      font-weight: bold;
+      margin-top: 5px;
+      color: #4CAF50; /* 랭킹 숫자 강조 */
+      font-size: 1.1em;
+    }
+
+    /* 레이아웃 관련 스타일 */
+    .main-content-flex-container {
+      margin-bottom: 40px;
+    }
+
+    .main-content-flex-container section {
+      padding: 20px; /* 섹션 내부 패딩 */
+      border-radius: 10px;
+      background-color: #fff;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.05);
+      width: 100%;
+      box-sizing: border-box;
+      margin-bottom: 20px; /* 섹션 간 간격 */
+    }
+
+    h2 {
+      font-size: 1.8em;
+      margin: 0 0 15px; /* 제목 하단 마진 */
+      padding-bottom: 10px;
+      border-bottom: 2px solid #eee; /* 제목 아래 구분선 */
+      text-align: left; /* 제목 왼쪽 정렬 */
+      color: #333;
+    }
+
+    /* 필터링 드롭다운 스타일 */
+    .filter-section {
+      margin-bottom: 20px;
+      display: flex;
+      align-items: center;
+      justify-content: flex-start; /* 왼쪽 정렬 */
+      background-color: #f8f8f8;
+      padding: 15px;
+      border-radius: 8px;
+      border: 1px solid #eee;
+    }
+    .filter-section label {
+      font-weight: bold;
+      margin-right: 10px;
+      color: #555;
+    }
+    .filter-section select {
+      padding: 10px;
+      border-radius: 5px;
+      border: 1px solid #ccc;
+      font-size: 1em;
+      background-color: white;
+      cursor: pointer;
+    }
+
+    /* 교사 로그인 버튼 컨테이너 (페이지 하단 중앙으로 이동) */
+    .teacher-login-container {
+      position: fixed; /* ✅ absolute -> fixed로 변경하여 스크롤 시에도 고정 */
+      top: 20px;       /* 상단에서 20px */
+      right: 20px;     /* ✅ left -> right로 변경하여 우측에 배치 */
+      z-index: 1000;   /* 다른 요소 위에 표시 */
+      text-align: right; /* 버튼이 컨테이너 내에서 우측 정렬되도록 (선택 사항) */
+    }
+    .teacher-login-button {
+        background-color: #007bff; /* 파란색 */
+        color: white;
+        padding: 12px 25px;
+        border: none;
+        border-radius: 6px;
+        cursor: pointer;
+        font-size: 1.1em;
+        box-shadow: 0 2px 5px rgba(0,0,0,0.2);
+        transition: background-color 0.2s;
+        min-width: 150px; /* 최소 너비 지정 */
+    }
+    .teacher-login-button:hover {
+        background-color: #0056b3;
+    }
+    .modal {
+    display: none; /* 기본 숨김 */
+    position: fixed;
+    z-index: 1000;
+    left: 0; top: 0; width: 100%; height: 100%;
+    background-color: rgba(0,0,0,0.5);
+    justify-content: center;
+    align-items: center;
+  }
+
+  /* 모달 콘텐츠 박스 */
+  .modal-content {
+    background-color: #fff;
+    padding: 20px 30px;
+    border-radius: 8px;
+    width: 280px;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.2);
+    text-align: center;
+    position: relative;
+  }
+
+  /* 닫기 버튼 */
+  .close-btn {
+    position: absolute;
+    right: 12px; top: 10px;
+    font-size: 24px;
+    cursor: pointer;
+    color: #888;
+  }
+
+  .close-btn:hover {
+    color: #000;
+  }
+
+  /* 입력창, 버튼 스타일 */
+  #teacherPasswordInput {
+    width: 100%;
+    padding: 8px 10px;
+    margin-top: 15px;
+    font-size: 1rem;
+    border: 1px solid #ccc;
+    border-radius: 5px;
+    box-sizing: border-box;
+  }
+
+  #modalLoginBtn {
+    margin-top: 15px;
+    padding: 8px 16px;
+    font-size: 1rem;
+    background-color: #4CAF50;
+    color: white;
+    border: none;
+    border-radius: 6px;
+    cursor: pointer;
+    width: 100%;
+    transition: background-color 0.3s;
+  }
+
+  #modalLoginBtn:hover {
+    background-color: #45a049;
+  }
+
+  /* 공통 sparkle 애니메이션 */
+  @keyframes sparkleMove {
+    0% { background-position: 0 0, 0 0; }
+    100% { background-position: 200% 200%, -200% -200%; }
+  }
+
+  /* 1등 금빛 */
+  .sparkle-gold {
+    background-color: #fff7d1;
+    background-image:
+      linear-gradient(45deg, rgba(255,255,255,0.2) 25%, transparent 25%, transparent 50%, rgba(255,255,255,0.2) 50%, rgba(255,255,255,0.2) 75%, transparent 75%, transparent),
+      linear-gradient(135deg, rgba(255,255,255,0.15) 25%, transparent 25%, transparent 50%, rgba(255,255,255,0.15) 50%, rgba(255,255,255,0.15) 75%, transparent 75%, transparent);
+    background-size: 60px 60px;
+    background-repeat: repeat;
+    background-blend-mode: overlay;
+    animation: sparkleMove 5s linear infinite;
+  }
+
+  /* 2등 은빛 */
+  .sparkle-silver {
+    background-color: #e5e5f7;
+    background-image:
+      linear-gradient(45deg, rgba(255,255,255,0.2) 25%, transparent 25%, transparent 50%, rgba(255,255,255,0.2) 50%, rgba(255,255,255,0.2) 75%, transparent 75%, transparent),
+      linear-gradient(135deg, rgba(255,255,255,0.15) 25%, transparent 25%, transparent 50%, rgba(255,255,255,0.15) 50%, rgba(255,255,255,0.15) 75%, transparent 75%, transparent);
+    background-size: 60px 60px;
+    background-repeat: repeat;
+    background-blend-mode: overlay;
+    animation: sparkleMove 5s linear infinite;
+  }
+
+  /* 3등 동빛 */
+  .sparkle-bronze {
+    background-color: #ffe5d1;
+    background-image:
+      linear-gradient(45deg, rgba(255,255,255,0.2) 25%, transparent 25%, transparent 50%, rgba(255,255,255,0.2) 50%, rgba(255,255,255,0.2) 75%, transparent 75%, transparent),
+      linear-gradient(135deg, rgba(255,255,255,0.15) 25%, transparent 25%, transparent 50%, rgba(255,255,255,0.15) 50%, rgba(255,255,255,0.15) 75%, transparent 75%, transparent);
+    background-size: 60px 60px;
+    background-repeat: repeat;
+    background-blend-mode: overlay;
+    animation: sparkleMove 5s linear infinite;
+  }
+
+  .student-name-line {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  height: 24px;
+  overflow: hidden;
+  white-space: nowrap;
+  }
+  .student-name-line strong {
+    font-size: 1em;
+  }
+  .student-name-line span {
+    font-size: 0.9em;
+    color: #666;
+  }
+  .student-emoji-left, .student-emoji-right {
+    position: absolute;
+    top: 50%;
+    transform: translateY(-50%);
+    font-size: 2em; /* 이모지 크기 조절 */
+    animation: bounceIn 0.5s ease-out; /* 애니메이션 효과 추가 */
+    z-index: 2;
+  }
+
+  .student-emoji-left {
+    left: -25px; /* 사진 왼쪽에 배치 */
+  }
+
+  .student-emoji-right {
+    right: -25px; /* 사진 오른쪽에 배치 */
+  }
+  </style>
+</head>
+<body>
+  <div id="teacherLoginModal" class="modal">
+    <div class="modal-content">
+      <span class="close-btn" id="modalCloseBtn">&times;</span>
+      <h2>🔐 교사 로그인</h2>
+      <input type="password" id="teacherPasswordInput" placeholder="비밀번호 입력" maxlength="4" autofocus>
+      <button id="modalLoginBtn">로그인</button>
+      <p id="loginErrorMsg" style="color:red; display:none; margin-top:8px;">❌ 비밀번호가 올바르지 않습니다.</p>
+    </div>
+  </div>
+  <div class="teacher-login-container">
+    <button class="teacher-login-btn" onclick="openTeacherLoginModal()">교사 로그인</button>
+  </div>
+
+  <div id="header">
+    <img id="schoolLogo" src="" alt="화북초등학교 로고"> <h1>성.실.함(성장 실천 함께) 화북초 학교장 인증제</h1>
+  </div>
+
+  <div class="main-content-flex-container">
+
+    <section id="notice-board-section">
+      <h2>🔔 공지사항</h2>
+      <div id="noticeBox"></div>
+    </section>
+
+    <section id="all-students-section">
+      <h2>화북초 학생 명단</h2>
+      <div class="filter-section"> <label for="gradeFilter">학년별 필터링:</label>
+        <select id="gradeFilter" onchange="filterStudentsByGrade(this.value)">
+          <option value="all">모든 학년</option>
+          <option value="1">1학년</option>
+          <option value="2">2학년</option>
+          <option value="3">3학년</option>
+          <option value="4">4학년</option>
+          <option value="5">5학년</option>
+          <option value="6">6학년</option>
+        </select>
+      </div>
+
+      <div id="studentList" class="student-grid">
+        <p>학생 데이터를 불러오는 중...</p>
+      </div>
+    </section>
+
+  </div>
+
+
+  <script>
+    const WEB_APP_BASE_URL = "https://script.google.com/macros/s/AKfycbyQvZI-_Kiv0fl1UHLFjmOwpJAHi_XS-2fuAswc7ZeJ2cfVTMT53WF5EIx38sHqt_JA/exec"; 
+
+    let imageMap = {};
+    let allStudentsData = []; // 모든 학생 데이터를 저장할 전역 변수
+
+    const modal = document.getElementById("teacherLoginModal");
+    const closeBtn = document.getElementById("modalCloseBtn");
+    const loginBtn = document.getElementById("modalLoginBtn");
+    const pwInput = document.getElementById("teacherPasswordInput");
+    const errorMsg = document.getElementById("loginErrorMsg");
+
+    // 비밀번호로 이름을 찾기 위한 맵
+    const passwordToTeacherNameMap = {
+      "7820": "이수정",
+      "0123": "김유상",
+      "0784": "박예준",
+      "3871": "문재성",
+      "5611": "심민정",
+      "0027": "예상현"
+    };
+
+    function openTeacherLoginModal() {
+    errorMsg.style.display = "none";
+    pwInput.value = "";
+    modal.style.display = "flex";
+    pwInput.focus();
+  }
+
+  // 모달 닫기 함수
+  function closeTeacherLoginModal() {
+    modal.style.display = "none";
+  }
+
+  // 로그인 시도 함수
+  function attemptLogin() {
+    const pw = pwInput.value.trim();
+    if (!pw) return;
+
+    const teacher = passwordToTeacherNameMap[pw];
+    if (teacher) {
+      window.open(`${WEB_APP_BASE_URL}?page=teacher&teacher=${encodeURIComponent(teacher)}`, "_blank");
+      closeTeacherLoginModal();
+    } else {
+      errorMsg.style.display = "block";
+      pwInput.focus();
+    }
+  }
+
+  // 이벤트 연결
+  closeBtn.addEventListener("click", closeTeacherLoginModal);
+  loginBtn.addEventListener("click", attemptLogin);
+  pwInput.addEventListener("keyup", (e) => {
+    if (e.key === "Enter") attemptLogin();
+  });
+
+  // 모달 외부 클릭 시 닫기
+  window.addEventListener("click", (e) => {
+    if (e.target === modal) closeTeacherLoginModal();
+  });
+
+    // --- loadNotice 함수 수정 제안 ---
+    async function loadNotice() {
+      const res = await fetch(`${WEB_APP_BASE_URL}?getNotices=true`);
+      const data = await res.json();
+
+      const box = document.getElementById("noticeBox");
+      if (Array.isArray(data) && data.length > 0) {
+        // ⭐⭐ 여기를 수정합니다 ⭐⭐
+        // 각 공지사항 항목(n)에서 '\n'을 '<br>'로 변환한 후 "📢 "를 앞에 붙입니다.
+        // 그리고 최종적으로 모든 항목을 <br>로 연결합니다.
+        box.innerHTML = data.slice(0, 3)
+                            .map(n => "📢 " + n.replace(/\n/g, '<br>')) // 공지사항 내용 자체의 줄바꿈 처리
+                            .join("<br>"); // 각 공지사항 항목 사이의 줄바꿈
+        box.style.display = "block";
+      } else {
+        box.style.display = "none";
+      }
+    }
+
+    async function loadStudentImageMap() {
+      const res = await fetch(`${WEB_APP_BASE_URL}?getStudentImageMap=true`);
+      imageMap = await res.json();
+    }
+
+    function renderStudents(studentsToDisplay) {
+      const container = document.getElementById("studentList");
+      container.innerHTML = "";
+
+      if (studentsToDisplay.length === 0) {
+        container.innerHTML = "<p>표시할 학생이 없습니다.</p>";
+        return;
+      }
+
+      const sortedAll = [...allStudentsData].sort((a, b) => b.totalPoint - a.totalPoint);
+      const top1 = sortedAll[0]?.totalPoint ?? 0;
+      const top2 = sortedAll[1]?.totalPoint ?? 0;
+      const top3 = sortedAll[2]?.totalPoint ?? 0;
+
+      studentsToDisplay.forEach(student => {
+        const card = document.createElement("div");
+        card.className = "student-card";
+
+        const studentsInSameGrade = allStudentsData.filter(s => s.grade === student.grade);
+        const maxPointInGrade = Math.max(...studentsInSameGrade.map(s => s.totalPoint));
+
+        if (student.totalPoint === maxPointInGrade) {
+          card.classList.add("gold-border");
+        }
+
+        const rankDisplay = (student.totalPoint === maxPointInGrade) ? '1위' :
+          (studentsInSameGrade
+            .sort((a, b) => b.totalPoint - a.totalPoint)
+            .findIndex(s => s.name === student.name) + 1) + '위';
+
+        if (student.totalPoint === top1) {
+          card.classList.add("sparkle-gold");
+        } else if (student.totalPoint === top2) {
+          card.classList.add("sparkle-silver");
+        } else if (student.totalPoint === top3) {
+          card.classList.add("sparkle-bronze");
+        }
+
+        const imgUrl = imageMap[student.name];
+        const hasImage = !!imgUrl;
+
+        const loginIndicator = student.hasLoggedIn ? '✅' : '';
+
+        // 이모지 문자열을 배열로 분리하여 최대 2개만 사용합니다.
+        const emojis = student.emoji ? student.emoji.split(',').map(e => e.trim()).filter(e => e) : [];
+        const leftEmoji = emojis.length > 0 ? `<span class="student-emoji-left">${emojis[0]}</span>` : '';
+        const rightEmoji = emojis.length > 1 ? `<span class="student-emoji-right">${emojis[1]}</span>` : '';
+
+        // 이모지가 추가된 새로운 HTML 구조입니다.
+        card.innerHTML = `
+          <div style="position: relative; display: inline-block;">
+            ${leftEmoji}
+            ${hasImage
+              ? `<img src="${imgUrl}" alt="사진" class="student-photo">`
+              : `<div class="student-photo" style="background:#eee; display:flex; align-items:center; justify-content:center; font-size:0.8em;">사진 없음</div>`
+            }
+            ${rightEmoji}
+          </div>
+          <div class="student-name-line">
+            <strong>${student.name}</strong>
+            <span>(${student.grade}학년)</span>
+            ${loginIndicator}
+          </div>
+          <div style="font-size:0.85em; color:#555;">🏆 ${student.grade}학년 ${rankDisplay}</div>
+          <div class="medals">🥇 ${student.gold} 🥈 ${student.silver} 🥉 ${student.bronze}</div>
+          <div class="rank">총 ${student.totalPoint}점</div>
+        `;
+
+        card.onclick = () => {
+          const url = `${WEB_APP_BASE_URL}?name=${encodeURIComponent(student.name)}&grade=${encodeURIComponent(student.grade)}`;
+          window.open(url, "_blank");
+        };
+
+        container.appendChild(card);
+      });
+    }
+
+    async function loadAllStudents() {
+      const container = document.getElementById("studentList");
+      container.innerHTML = "<p>학생 데이터를 불러오는 중...</p>";
+
+      try {
+        const res = await fetch(`${WEB_APP_BASE_URL}?getAllStudentStats=true`);
+        const data = await res.json();
+
+        data.sort((a, b) => {
+          if (a.grade === b.grade) return b.totalPoint - a.totalPoint;
+          return Number(a.grade) - Number(b.grade);
+        });
+
+        allStudentsData = data;
+        renderStudents(allStudentsData);
+
+      } catch (error) {
+        console.error("모든 학생 데이터를 불러오는 중 오류 발생:", error);
+        container.innerHTML = "<p>학생 데이터를 불러오는 데 실패했습니다.</p>";
+      }
+    }
+
+    function filterStudentsByGrade(selectedGrade) {
+      let filteredStudents = [];
+      if (selectedGrade === "all") {
+        filteredStudents = allStudentsData;
+      } else {
+        filteredStudents = allStudentsData.filter(student => String(student.grade) === String(selectedGrade));
+      }
+      renderStudents(filteredStudents);
+    }
+
+    async function loadSchoolLogo() {
+        try {
+            // 백엔드의 getSchoolLogoUrl 함수를 호출하는 GET 요청
+            const res = await fetch(`${WEB_APP_BASE_URL}?getSchoolLogoUrl=true`);
+            const data = await res.json(); // 백엔드에서 { url: "..." } 형태의 JSON 응답을 받음
+            
+            const logoImgElement = document.getElementById('schoolLogo'); // HTML의 img 태그 찾기
+
+            if (logoImgElement && data.url) {
+                logoImgElement.src = data.url; // 받은 URL로 이미지 src 변경
+                logoImgElement.alt = "학교 로고"; // alt 텍스트 변경
+            } else if (logoImgElement) {
+                console.warn("학교 로고 URL을 찾을 수 없습니다. 기본 로고를 사용합니다.");
+                // 필요시 여기에 대체 기본 로고 URL을 설정할 수 있습니다.
+                // logoImgElement.src = "path/to/default_logo.png";
+            }
+        } catch (error) {
+            console.error("학교 로고를 불러오는 중 오류 발생:", error);
+        }
+    }
+
+    window.addEventListener("DOMContentLoaded", async () => {
+        // 모든 초기 데이터 로드를 동시에 시작하고 기다립니다.
+        await Promise.all([
+            loadSchoolLogo(),
+            loadStudentImageMap(), // 학생 이미지 맵 로드
+            loadAllStudents(),     // 모든 학생 통계 로드 및 렌더링
+            loadNotice()           // 공지사항 로드
+        ]);
+    });
+  </script>
+</body>
+</html>

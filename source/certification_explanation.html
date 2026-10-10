@@ -1,0 +1,156 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <base target="_top">
+    <meta charset="utf-8">
+    <title>인증 항목 설명</title>
+    <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;700&display=swap" rel="stylesheet">
+    <style>
+        body { font-family: 'Noto Sans KR', sans-serif; margin: 0; padding: 0; background-color: #f4f4f4; color: #333; }
+        .container { max-width: 800px; margin: 20px auto; background-color: #fff; border-radius: 10px; box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1); overflow: hidden; }
+        header { background-color: #4CAF50; color: white; padding: 20px; text-align: center; border-bottom: 5px solid #45a049; }
+        header h1 { margin: 0; font-size: 1.8em; }
+        .explanation-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); /* 카드 너비 조정 */
+            gap: 20px;
+            padding: 20px;
+        }
+        .explanation-card {
+            background-color: #fff;
+            border: 1px solid #ddd;
+            border-radius: 8px;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.05);
+            overflow: hidden;
+            display: flex;
+            flex-direction: column;
+        }
+        .explanation-card img {
+            width: 100%;
+            height: auto; /* 높이 자동 조절 */
+            object-fit: contain; /* 비율 유지 */
+            background-color: #eee;
+            border-bottom: 1px solid #ddd;
+        }
+        .explanation-card-content {
+            padding: 15px;
+            flex-grow: 1; /* 내용이 카드 높이에 맞게 늘어나도록 */
+        }
+        .explanation-card-content h3 {
+            margin-top: 0;
+            margin-bottom: 5px;
+            color: #4CAF50; /* 카테고리 색상 */
+            font-size: 1.2em;
+        }
+        .explanation-card-content h4 {
+            margin-top: 0;
+            margin-bottom: 10px;
+            color: #555; /* 미션 항목 색상 */
+            font-size: 1em;
+        }
+        .explanation-card-content p {
+            font-size: 0.9em;
+            color: #666;
+            line-height: 1.5;
+            white-space: pre-wrap; /* 스프레드시트의 줄 바꿈 그대로 반영 */
+        }
+        /* back-button-container 관련 CSS는 이제 사용되지 않지만, 다른 곳에서 참조하지 않는다면 남겨둬도 무방합니다. */
+        .back-button-container {
+            padding: 20px;
+            text-align: center;
+        }
+        .back-button {
+            background-color: #6c757d;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 1em;
+            transition: background-color 0.2s;
+        }
+        .back-button:hover {
+            background-color: #5a6268;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>인증 항목 설명</h1>
+        </header>
+
+        <div class="explanation-grid" id="explanationGrid">
+            로딩 중...
+        </div>
+
+        </div>
+
+    <script>
+        const WEB_APP_URL = "<?= WEB_APP_URL ?>";
+
+        // 텍스트 내의 URL을 클릭 가능한 링크로 변환하는 함수
+        function convertUrlsToLinks(text) {
+            if (!text) return '';
+            const urlRegex = /(https?:\/\/[^\s]+)/g; 
+            return text.replace(urlRegex, '<a href="$&" target="_blank" style="color: #007bff; text-decoration: underline;">$&</a>');
+        }
+
+        async function loadExplanations() {
+            try {
+                const res = await fetch(`${WEB_APP_URL}?getCertificationExplanations=true`);
+                const data = await res.json();
+                const grid = document.getElementById("explanationGrid");
+                grid.innerHTML = "";
+
+                if (data.length === 0) {
+                    grid.innerHTML = "<p>설명 자료가 없습니다.</p>";
+                    return;
+                }
+
+                data.forEach(item => {
+                    const card = document.createElement("div");
+                    card.className = "explanation-card";
+
+                    // ⭐ 이미지 표시 로직 (기존 코드 그대로 유지) ⭐
+                    // 백엔드에서 item.imageUrl을 반환한다고 가정합니다.
+                    if (item.imageUrl) {
+                        const img = document.createElement("img");
+                        img.src = item.imageUrl;
+                        img.alt = item.missionItem;
+                        card.appendChild(img);
+                    } else {
+                        const placeholder = document.createElement("div");
+                        placeholder.style.height = "180px";
+                        placeholder.style.backgroundColor = "#f0f0f0";
+                        placeholder.style.display = "flex";
+                        placeholder.style.alignItems = "center";
+                        placeholder.style.justifyContent = "center";
+                        placeholder.style.color = "#aaa";
+                        placeholder.textContent = "이미지 없음";
+                        card.appendChild(placeholder);
+                    }
+                    // ⭐ 이미지 표시 로직 끝 ⭐
+
+                    const contentDiv = document.createElement("div");
+                    contentDiv.className = "explanation-card-content";
+                    contentDiv.innerHTML = `
+                        <h3>${item.category}</h3>
+                        <h4>${item.missionItem}</h4>
+                        <p>${convertUrlsToLinks(item.description).replace(/\n/g, '<br>')}</p>
+                    `;
+
+                    card.appendChild(contentDiv);
+                    grid.appendChild(card);
+                });
+
+            } catch (error) {
+                console.error("설명 로드 실패:", error);
+                document.getElementById("explanationGrid").innerHTML = `<p>설명 자료를 불러오는 데 실패했습니다: ${error.message}</p>`;
+            }
+        }
+
+        window.addEventListener("DOMContentLoaded", loadExplanations);
+    </script>
+</body>
+</html>

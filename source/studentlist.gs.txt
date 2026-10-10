@@ -1,0 +1,117 @@
+/**
+ * 시트가 열릴 때 메뉴를 생성합니다.
+ */
+function onOpen() {
+  SpreadsheetApp.getUi()
+      .createMenu('✨학생 명단 자동화')
+      .addItem('드라이브에서 학생 목록 생성/업데이트', 'createStudentListFromDrive')
+      .addToUi();
+}
+
+/**
+ * 하위 폴더까지 재귀적으로 탐색하여 '경로/파일명'과 '파일ID'를 매핑한 객체를 반환합니다.
+ */
+function getAllFilesRecursive(folder, path, fileMap) {
+  const files = folder.getFiles();
+  while (files.hasNext()) {
+    const file = files.next();
+    const fileName = file.getName();
+    const nameOnly = fileName.includes('.') ? fileName.split('.').slice(0, -1).join('.') : fileName;
+    fileMap.set(path + nameOnly, file.getId());  // ✅ 파일 ID 저장
+  }
+  const subFolders = folder.getFolders();
+  while (subFolders.hasNext()) {
+    const subFolder = subFolders.next();
+    getAllFilesRecursive(subFolder, path + subFolder.getName() + "/", fileMap);
+  }
+}
+
+/**
+ * 드라이브 폴더 구조를 읽어와 '학생 목록' 시트를 새로 작성하는 메인 함수
+ */
+function createStudentListFromDrive() {
+  const ROOT_FOLDER_ID = "1iqoGDXjsx63SRqNnwYgBrmwPRwxehN1q";  // 🔧 드라이브 폴더 ID
+  const SHEET_NAME = "학생 목록";
+
+  const ui = SpreadsheetApp.getUi();
+  const sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(SHEET_NAME);
+  
+  if (!sheet) {
+    ui.alert(`'${SHEET_NAME}' 시트를 찾을 수 없습니다.`);
+    return;
+  }
+
+  const question = ui.alert('드라이브 폴더 구조를 읽어와 시트를 업데이트합니다. 기존 내용이 덮어쓰기 됩니다. 계속할까요?', ui.ButtonSet.YES_NO);
+  if (question !== ui.Button.YES) {
+    ui.alert('작업을 취소했습니다.');
+    return;
+  }
+
+  try {
+    // 기존 담임 정보 미리 백업
+    const teacherMap = new Map();
+    if (sheet.getLastRow() > 1) {
+      const existingData = sheet.getRange(2, 1, sheet.getLastRow() - 1, 5).getValues();
+      existingData.forEach(row => {
+        const grade = row[0];
+        const a_class = row[1];
+        const name = row[2];
+        const teacher = row[4] || "";
+        const key = `${grade}학년/${a_class}반/${name}`;
+        teacherMap.set(key, teacher);
+      });
+    }
+
+    // 드라이브 탐색
+    const rootFolder = DriveApp.getFolderById(ROOT_FOLDER_ID);
+    const fileMap = new Map();
+    getAllFilesRecursive(rootFolder, "", fileMap);
+
+    if (fileMap.size === 0) {
+      ui.alert('폴더에 학생 폴더/파일이 없습니다.');
+      return;
+    }
+    
+    const studentListData = [];
+    
+    for (const [path, fileId] of fileMap.entries()) {
+      const parts = path.split('/');
+      if (parts.length === 3) {
+        const gradeStr = parts[0];
+        const classStr = parts[1];
+        const name = parts[2];
+
+        const grade = gradeStr.match(/\d+/);
+        const a_class = classStr.match(/\d+/);
+
+        if (grade && a_class && name) {
+          const searchKey = `${grade[0]}학년/${a_class[0]}반/${name}`;
+          const teacherName = teacherMap.get(searchKey) || "";
+          studentListData.push([grade[0], a_class[0], name, fileId, teacherName]);
+        }
+      }
+    }
+    
+    if (studentListData.length === 0) {
+      ui.alert('폴더 구조에 학생 데이터가 없습니다.');
+      return;
+    }
+
+    studentListData.sort((a, b) => {
+      if (a[0] !== b[0]) return a[0] - b[0];
+      if (a[1] !== b[1]) return a[1] - b[1];
+      return a[2].localeCompare(b[2]);
+    });
+
+    if (sheet.getLastRow() > 1) {
+      sheet.getRange(2, 1, sheet.getLastRow() - 1, sheet.getLastColumn()).clearContent();
+    }
+    sheet.getRange(2, 1, studentListData.length, 5).setValues(studentListData);
+
+    ui.alert(`완료: ${studentListData.length}명 학생 데이터를 새로 등록했습니다.`);
+
+  } catch (e) {
+    Logger.log(e);
+    ui.alert(`오류 발생: ${e.message}`);
+  }
+}

@@ -1,0 +1,297 @@
+// 🚨🚨🚨 보안 설정 안내 🚨🚨🚨
+// 1. Apps Script 편집기에서 [파일] > [프로젝트 속성] > [스크립트 속성] 탭으로 이동하세요.
+// 2. '속성 추가'를 눌러 '이름'에는 PADLET_API_KEY 를, '값'에는 새로 발급받은 API 키를 입력하고 저장합니다.
+// 이렇게 하면 코드에 직접 키가 노출되지 않아 안전합니다.
+
+const API_KEY = PropertiesService.getScriptProperties().getProperty('PADLET_API_KEY');
+const BOARD_ID = 'a0tavqqia0l7x626'; // 데이터를 가져올 패들렛 보드 ID
+const SHEET_NAME = '문구점 주문'; // 데이터를 저장할 시트 이름
+
+/**
+ * HTML 태그를 제거하여 순수 텍스트만 남기는 함수
+ * @param {string} html - HTML 코드가 포함된 텍스트
+ * @return {string} 깨끗한 텍스트
+ */
+function stripHtmlTags(html) {
+  if (typeof html !== 'string') return '';
+  return html.replace(/<[^>]*>?/gm, '');
+}
+
+/**
+ * 텍스트에서 첫 번째 숫자만 추출하는 도우미 함수
+ * @param {string} text - 숫자를 추출할 텍스트 (예: "화폐 300개", "5개요")
+ * @return {number} 추출된 숫자. 없으면 0을 반환.
+ */
+function extractNumber(text) {
+  if (typeof text !== 'string') {
+    return 0;
+  }
+  const match = text.match(/\d+/); // 텍스트에서 첫 번째로 나오는 숫자 그룹을 찾습니다.
+  return match ? parseInt(match[0], 10) : 0;
+}
+
+
+/**
+ * "화폐 ~" 패턴에서 화폐 가치를 추출하는 함수
+ * @param {string} text - 가격을 추출할 텍스트 (예: "화폐 300개 입니다.")
+ * @return {number} 추출된 숫자. 없으면 0을 반환.
+ */
+function extractPrice(text) {
+  if (typeof text !== 'string') {
+    return 0;
+  }
+  // "화폐" 라는 단어 바로 뒤에 오는 숫자를 찾습니다.
+  const match = text.match(/화폐\s*(\d+)/);
+  // match 결과는 배열입니다. match[0]은 전체 일치 문자열("화폐 300"), match[1]은 캡처된 그룹("300")입니다.
+  return match && match[1] ? parseInt(match[1], 10) : 0;
+}
+
+/**
+ * 댓글 내용을 "이름 개수 (조건)" 형식으로 재구성하는 함수
+ * @param {string} text - 원본 댓글 텍스트 (예: "강수현 파란색 1", "김하람 1 (블랙)")
+ * @return {string} 재구성된 문자열
+ */
+function reformatComment(text) {
+  if (typeof text !== 'string' || text.trim() === '') {
+    return '';
+  }
+
+  // 댓글 내부의 쉼표는 우선 공백으로 변경
+  const singleLineText = text.replace(/,/g, ' ').trim();
+
+  const quantity = extractNumber(singleLineText);
+  if (quantity === 0) {
+    // 숫자가 없는 댓글은 (질문 등) 그대로 반환
+    return singleLineText;
+  }
+  
+  // 텍스트에서 숫자와 그 주변의 공백까지 정확히 제거
+  // 예: "김하람 1 (블랙)" -> "김하람 (블랙)"
+  const remainingText = singleLineText.replace(new RegExp(`\\s*${quantity}\\s*`), ' ').trim();
+
+  // 괄호 안의 내용을 조건으로 추출
+  const conditionMatch = remainingText.match(/\((.*?)\)/);
+  let namePart = remainingText;
+  let conditionPart = '';
+
+  if (conditionMatch) {
+    conditionPart = conditionMatch[1].trim();
+    namePart = remainingText.replace(/\(.*?\)/, '').trim();
+  } else {
+    // 괄호가 없으면, 첫 단어를 이름으로, 나머지를 조건으로 가정
+    const parts = namePart.split(/\s+/);
+    namePart = parts[0];
+    if (parts.length > 1) {
+      conditionPart = parts.slice(1).join(' ');
+    }
+  }
+
+  // 최종 형식으로 조합하여 반환
+  if (conditionPart) {
+    return `${namePart} ${quantity} (${conditionPart})`;
+  } else {
+    return `${namePart} ${quantity}`;
+  }
+}
+
+/**
+ * '문구점 주문' 시트의 데이터를 읽어 학생별 총사용 화폐를 계산하고,
+ * 결과를 동일 시트의 오른쪽에 업데이트하는 함수 (알림창 표시 여부 제어 기능 추가)
+ * @param {boolean} showAlert - true일 경우 작업 완료 알림창을 표시.
+ */
+function calculateStudentTotals(showAlert = true) {
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  const sheet = ss.getSheetByName(SHEET_NAME);
+  
+  if (!sheet) {
+    if (showAlert) SpreadsheetApp.getUi().alert("'문구점 주문' 시트를 찾을 수 없습니다.");
+    return;
+  }
+  
+  const dataRange = sheet.getDataRange();
+  const values = dataRange.getValues();
+  
+  const studentTotals = {};
+
+  for (let i = 1; i < values.length; i++) {
+    const row = values[i];
+    const unitPrice = row[2];
+    const orderDetails = row[4];
+    
+    if (typeof orderDetails !== 'string' || orderDetails === '' || !unitPrice) {
+      continue;
+    }
+    
+    const individualOrders = orderDetails.split(', ');
+    
+    individualOrders.forEach(order => {
+      const quantity = extractNumber(order);
+      const studentName = order.split(' ')[0].trim();
+      
+      if (studentName && quantity > 0) {
+        const cost = quantity * unitPrice;
+        if (studentTotals[studentName]) {
+          studentTotals[studentName] += cost;
+        } else {
+          studentTotals[studentName] = cost;
+        }
+      }
+    });
+  }
+
+  const startColumn = 6;
+  sheet.getRange(1, startColumn, sheet.getMaxRows(), 3).clearContent();
+
+  const newHeader = ['', '학생 이름', '총 사용 화폐'];
+  sheet.getRange(1, startColumn, 1, 3).setValues([newHeader]).setFontWeight('bold');
+  
+  const dataRows = Object.keys(studentTotals).map(name => ['', name, studentTotals[name]]);
+  dataRows.sort((a, b) => a[1].localeCompare(b[1]));
+
+  if (dataRows.length > 0) {
+    sheet.getRange(2, startColumn, dataRows.length, 3).setValues(dataRows);
+  }
+  
+  const resultRange = sheet.getRange(1, startColumn, sheet.getLastRow(), 3);
+  resultRange.setHorizontalAlignment('center');
+  sheet.setColumnWidth(startColumn, 20);
+
+  if (showAlert) {
+    SpreadsheetApp.getUi().alert('정산 완료!', "'문구점 주문' 시트 오른쪽에 학생별 정산 내역을 업데이트했습니다.", SpreadsheetApp.getUi().ButtonSet.OK);
+  }
+}
+
+/**
+ * 패들렛 API를 호출하여 주문 데이터를 가져와 시트에 업데이트하는 메인 함수
+ */
+function collectOrderData() {
+  const API_KEY = PropertiesService.getScriptProperties().getProperty('PADLET_API_KEY');
+  if (!API_KEY) {
+    SpreadsheetApp.getUi().alert('설정 오류', '스크립트 속성에 PADLET_API_KEY가 설정되지 않았습니다. [파일] > [프로젝트 속성]에서 API 키를 설정해주세요.', SpreadsheetApp.getUi().ButtonSet.OK);
+    return;
+  }
+
+  const url = `https://api.padlet.dev/v1/boards/${BOARD_ID}?include=posts,comments`;
+  
+  const options = {
+    'method': 'get',
+    'headers': {
+      'X-Api-Key': API_KEY,
+      'Accept': 'application/vnd.api+json'
+    },
+    'muteHttpExceptions': true
+  };
+
+  try {
+    const response = UrlFetchApp.fetch(url, options);
+    const responseCode = response.getResponseCode();
+    
+    if (responseCode !== 200) {
+        SpreadsheetApp.getUi().alert('오류', 'Padlet API를 호출하는 데 실패했습니다. API 키와 보드 ID를 확인해주세요.', SpreadsheetApp.getUi().ButtonSet.OK);
+        return;
+    }
+
+    const data = JSON.parse(response.getContentText());
+
+    if (data.errors) {
+      SpreadsheetApp.getUi().alert('오류', 'Padlet API에서 에러가 발생했습니다: ' + data.errors[0].detail, SpreadsheetApp.getUi().ButtonSet.OK);
+      return;
+    }
+
+    const includedData = data.included || [];
+    const posts = includedData.filter(item => item.type === 'post');
+    const comments = includedData.filter(item => item.type === 'comment');
+
+    let sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(SHEET_NAME);
+    if (!sheet) {
+      sheet = SpreadsheetApp.getActiveSpreadsheet().insertSheet(SHEET_NAME);
+    }
+    
+    const newHeader = ['품명', '개수', '단가(필요 화폐)', '총 회수 화폐', '주문상황'];
+    
+    // ### ✨ 변경점: 시트 전체(sheet.clear()) 대신 스크립트가 관리하는 A~E열의 내용만 초기화 ###
+    // 이렇게 하면 선생님께서 I, J 열 등에 작성하시는 메모가 안전하게 유지됩니다.
+    sheet.getRange(1, 1, sheet.getMaxRows(), 5).clearContent(); 
+    
+    const headerRange = sheet.getRange(1, 1, 1, newHeader.length);
+    headerRange.setValues([newHeader]);
+    headerRange.setFontWeight("bold");
+    sheet.setFrozenRows(1); 
+    
+    const orderSummary = {}; 
+
+    comments.forEach((comment) => {
+      const parentPostId = comment.relationships.post.data.id;
+      const parentPost = posts.find(post => post.id === parentPostId);
+      if (parentPost) {
+        const itemName = parentPost.attributes.content.subject;
+        const excludedPosts = ['이런 물건을 사고 싶어요!', '주문방법'];
+        if (itemName && excludedPosts.includes(itemName.trim())) {
+            return;
+        }
+
+        const cleanCommentBody = stripHtmlTags(comment.attributes.content).trim();
+        const quantity = extractNumber(cleanCommentBody);
+
+        if (quantity > 0) {
+            if (!orderSummary[itemName]) {
+                const cleanPostBody = stripHtmlTags(parentPost.attributes.content.bodyHtml);
+                const price = extractPrice(cleanPostBody);
+                orderSummary[itemName] = { totalQuantity: 0, price: price, details: [] };
+            }
+            orderSummary[itemName].totalQuantity += quantity;
+            const formattedComment = reformatComment(cleanCommentBody);
+            orderSummary[itemName].details.push(formattedComment);
+        }
+      }
+    });
+    
+    const dataRows = [];
+    for (const itemName in orderSummary) {
+      const summary = orderSummary[itemName];
+      const totalPrice = summary.totalQuantity * summary.price;
+      const detailsString = summary.details.join(', ');
+      
+      dataRows.push([itemName, summary.totalQuantity, summary.price, totalPrice, detailsString]);
+    }
+
+    if (dataRows.length > 0) {
+      sheet.getRange(2, 1, dataRows.length, newHeader.length).setValues(dataRows);
+    }
+
+    if (sheet.getLastRow() > 0) {
+        const fullRange = sheet.getRange(1, 1, sheet.getLastRow(), newHeader.length);
+        fullRange.setHorizontalAlignment("center");
+        sheet.getRange(2, 5, sheet.getLastRow() - 1, 1).setHorizontalAlignment("left");
+    }
+
+  } catch (e) {
+    SpreadsheetApp.getUi().alert('스크립트 오류', '실행 중 에러가 발생했습니다:\n\n' + e.toString(), SpreadsheetApp.getUi().ButtonSet.OK);
+  }
+}
+
+/**
+ * 사용자가 메뉴를 클릭했을 때 주문 불러오기와 학생별 정산을 모두 실행하는 메인 함수
+ */
+function runFullProcess() {
+  collectOrderData(); // 1. 패들렛에서 주문 데이터 불러오기
+  calculateStudentTotals(false); // 2. 학생별 정산 실행 (알림창은 띄우지 않음)
+  
+  // 3. 모든 작업이 끝난 후 한 번만 알림창 표시
+  SpreadsheetApp.getUi().alert('작업 완료!', '주문 불러오기 및 학생별 정산이 모두 완료되었습니다.', SpreadsheetApp.getUi().ButtonSet.OK);
+}
+
+/**
+ * 스프레드시트가 열릴 때 자동으로 실행되어 커스텀 메뉴를 추가하는 함수입니다.
+ */
+function onOpen() {
+  const ui = SpreadsheetApp.getUi();
+  ui.createMenu('✨학생 명단 자동화')
+    .addItem('드라이브에서 학생 목록 생성/업데이트', 'createStudentListFromDrive')
+    .addToUi();
+  
+  // ### 변경점: 메뉴를 '주문 불러오기 및 정산' 하나로 통합 ###
+  ui.createMenu('🎨문구점')
+    .addItem('주문 불러오기 및 정산', 'runFullProcess')
+    .addToUi();
+}

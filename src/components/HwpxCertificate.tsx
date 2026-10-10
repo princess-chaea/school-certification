@@ -23,7 +23,7 @@ export function HwpxCertificate({ config, program, student, plain, seal }: { con
         <div className="t">학교장&nbsp;&nbsp;인증서</div>
         <div className="meta">
           <div>
-            인증분야:
+            <span className="lbl">인증분야:</span>
             <br />
             {programById(config, program)?.name ?? program}
           </div>

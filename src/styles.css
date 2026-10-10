@@ -359,7 +359,7 @@ table.table td.num { text-align: right; font-variant-numeric: tabular-nums; }
 .tiny-hud { font-family: var(--font-pixel); font-size: .68rem; }
 .quest { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; margin-top: 4px; }
 
-.stage-map { position: relative; margin: 16px 6px 54px; }
+.stage-map { position: relative; margin: 26px 6px 78px; }
 .stage-track { position: relative; display: flex; gap: 2px; height: 14px; padding: 2px; border: 2px solid #1f2240; border-radius: 3px; background: #eef0f3; }
 .stage-track i { flex: 1; background: #d7dbe3; }
 .stage-track i.on { background: #feae34; box-shadow: inset 0 -3px 0 #f77622; }

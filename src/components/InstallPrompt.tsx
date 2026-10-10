@@ -5,14 +5,13 @@ import { toast } from "./ui";
 import { canPromptInstall, isStandalone, onInstallChange, platform, promptInstall, type Platform } from "../lib/install";
 
 const NEVER = "installPrompt.never";
-const SEEN = "installPrompt.seen";
 const read = (s: Storage, k: string) => { try { return s.getItem(k); } catch { return null; } };
 const write = (s: Storage, k: string, v: string) => { try { s.setItem(k, v); } catch { /* 사생활 보호 모드 등 */ } };
 
-/** 휴대폰·태블릿 브라우저로 쓰는 중이면 로그인 직후 한 번 "앱으로 설치" 안내 */
+/** 휴대폰·태블릿 브라우저로 쓰는 중이면 접속(로그인)할 때마다 "앱으로 설치" 안내 — [다시 보지 않기]·설치 전까지 */
 function shouldShow() {
   if (isStandalone()) return false; // 이미 설치한 앱으로 열었음
-  if (read(localStorage, NEVER) || read(sessionStorage, SEEN)) return false;
+  if (read(localStorage, NEVER)) return false;
   const touch = window.matchMedia?.("(pointer: coarse)").matches;
   return touch || canPromptInstall();
 }
@@ -49,10 +48,7 @@ export function InstallPrompt() {
   useEffect(() => {
     // 로그인 화면이 바뀐 직후 바로 덮지 않게 잠깐 뒤에
     const t = setTimeout(() => {
-      if (shouldShow()) {
-        write(sessionStorage, SEEN, "1");
-        setOpen(true);
-      }
+      if (shouldShow()) setOpen(true);
     }, 1200);
     return () => clearTimeout(t);
   }, []);

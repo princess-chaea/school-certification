@@ -19,11 +19,5 @@ export function SchoolProvider({ schoolId, children }: { schoolId: string; child
       ),
     [schoolId],
   );
-  useEffect(() => {
-    document.title = `${school.shortName} 학교장 인증제`;
-    return () => {
-      document.title = "학교장 인증제";
-    };
-  }, [school.shortName]);
   return <Ctx.Provider value={school}>{children}</Ctx.Provider>;
 }

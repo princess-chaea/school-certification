@@ -9,9 +9,9 @@ export default defineConfig({
       registerType: "autoUpdate",
       includeAssets: ["favicon.png", "logo.png"],
       manifest: {
-        name: "하주 학교장 인증제",
-        short_name: "하주 인증제",
-        description: "하주초등학교 도전! 꿈 성취 학교장 인증제",
+        name: "학교장 인증제",
+        short_name: "학교장 인증제",
+        description: "도전! 꿈 성취 학교장 인증제",
         lang: "ko",
         theme_color: "#1e3a8a",
         background_color: "#ffffff",

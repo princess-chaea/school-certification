@@ -15,6 +15,7 @@ const itemTime = (i: EnglishItem) => recordTime(i.checkedAt ?? i.requestedAt);
 
 export interface EnglishGroup {
   key: string;
+  sid: string;
   program: string;
   task: string;
   items: EnglishItem[]; // 최근 순
@@ -22,12 +23,12 @@ export interface EnglishGroup {
 }
 
 /** 선생님께 보낸 영어 문장(검사 요청·인정·다시 하기)을 과제별로 묶음 — 문장마다 한 줄씩 늘어나지 않게 */
-export function englishGroups(items: EnglishItem[] | null): EnglishGroup[] {
+export function englishGroups(items: EnglishItem[] | null, perStudent = false): EnglishGroup[] {
   const map = new Map<string, EnglishGroup>();
   for (const i of items ?? []) {
     if (i.status !== "requested" && i.status !== "checked" && i.status !== "retry") continue;
-    const key = `${i.program}/${i.task}`;
-    const g = map.get(key) ?? { key, program: i.program, task: i.task, items: [], at: 0 };
+    const key = `${perStudent ? `${i.sid}/` : ""}${i.program}/${i.task}`;
+    const g = map.get(key) ?? { key, sid: i.sid, program: i.program, task: i.task, items: [], at: 0 };
     g.items.push(i);
     g.at = Math.max(g.at, itemTime(i));
     map.set(key, g);
@@ -37,7 +38,7 @@ export function englishGroups(items: EnglishItem[] | null): EnglishGroup[] {
 }
 
 /** 영어 문장 녹음 기록 (과제 하나 = 카드 하나): 학생 [내 기록]·홈 최근 기록·교사 학생 상세 공통 */
-export function EnglishGroupCard({ group, config, compact }: { group: EnglishGroup; config: AppConfig; compact?: boolean }) {
+export function EnglishGroupCard({ group, config, compact, who }: { group: EnglishGroup; config: AppConfig; compact?: boolean; who?: string }) {
   const [open, setOpen] = useState(false);
   const def = programById(config, group.program);
   const task = def?.tasks?.find((t) => t.id === group.task);
@@ -67,8 +68,9 @@ export function EnglishGroupCard({ group, config, compact }: { group: EnglishGro
     <div className="card flat sub-card">
       <div className="thumb"><PixelIcon name="mic" size={32} /></div>
       <div className="stack" style={{ gap: 4, minWidth: 0 }}>
+        {who && <b>{who}</b>}
         <div className="row between">
-          <b>{title}</b>
+          <b className={who ? "small" : undefined}>{title}</b>
           <span className="tiny">{date}</span>
         </div>
         <div className="row" style={{ gap: 6 }}>{chips}</div>

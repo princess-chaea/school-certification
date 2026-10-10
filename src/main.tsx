@@ -1,5 +1,6 @@
 import { createRoot } from "react-dom/client";
 import "./styles.css";
+import "./lib/install"; // 설치 가능 신호(beforeinstallprompt)를 로그인 전부터 받아 둠
 
 // 배포 환경 변수(VITE_FIREBASE_*)가 빌드에 들어갔는지 먼저 확인한다.
 // 빠졌으면 Firebase 가 시작하자마자 오류를 내고 빈 화면이 되므로, 대신 무엇이 빠졌는지 보여 준다.

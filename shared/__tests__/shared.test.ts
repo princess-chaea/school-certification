@@ -1,13 +1,15 @@
 import { describe, expect, it } from "vitest";
 import { isCorrectAnswer, diffWords, firstLetterHint, normalizeSentence, speechMatchRatio } from "../typing";
 import { parseNeisSchoolInfo, neisResultMessage, shortSchoolName, mergeSchool, principalTitle } from "../school";
-import { thresholdsFor, medalFor, DEFAULT_CONFIG, computeProgress, nextStep, validateEvidence } from "../domain";
+import { thresholdsFor, medalFor, HAJU_PROGRAMS, DEFAULT_CONFIG as BASE_CONFIG, computeProgress, nextStep, validateEvidence } from "../domain";
 import { PROGRAM_TEMPLATES } from "../templates";
 import { ICONS } from "../../src/components/pixelArt";
 import task1 from "../../data/english/task1-cartoon.json";
 import g4 from "../../data/english/task3-grade4.json";
 import g5 from "../../data/english/task3-grade5.json";
 import g6 from "../../data/english/task3-grade6.json";
+
+const DEFAULT_CONFIG = { ...BASE_CONFIG, programs: HAJU_PROGRAMS };
 
 describe("typing", () => {
   it("allows case, punctuation, curly quotes and contractions", () => {

@@ -83,8 +83,8 @@ export function StudentDetail() {
             <textarea className="input" autoFocus maxLength={300} value={note} onChange={(e) => setNote(e.target.value)} placeholder="예: 꾸준히 기록하는 모습이 멋져요! 다음엔 은장에 도전해 볼까요?" style={{ minHeight: 90 }} />
             <div className="row" style={{ gap: 6, justifyContent: "flex-end" }}>
               <span className="tiny" style={{ marginRight: "auto" }}>{note.length}/300</span>
-              <button className="btn ghost sm" onClick={() => setNote(null)}>취소</button>
               <button className="btn sm" disabled={busy || !note.trim()} onClick={() => saveNote(note.trim())}>{busy ? "저장 중…" : "저장"}</button>
+              <button className="btn ghost sm" onClick={() => setNote(null)}>취소</button>
             </div>
           </>
         )}

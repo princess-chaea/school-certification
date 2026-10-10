@@ -133,8 +133,8 @@ export function ProgramsAdmin() {
       </div>
       {dirty && (
         <div className="submit-bar">
-          <button className="btn ghost" onClick={() => { setPrograms(config.programs); setRemoved([]); setDirty(false); }}>되돌리기</button>
           <button className="btn big" disabled={busy} onClick={save}>{busy ? "저장 중…" : "인증 항목 저장"}</button>
+          <button className="btn ghost" onClick={() => { setPrograms(config.programs); setRemoved([]); setDirty(false); }}>되돌리기</button>
         </div>
       )}
       <FeatureRequest />
@@ -329,8 +329,8 @@ function ProgramEditor({ initial, onCancel, onSave, existingIds }: { initial: Pr
         </div>
       </div>
       <div className="submit-bar">
-        <button className="btn ghost" onClick={onCancel}>취소</button>
         <button className="btn big" disabled={!valid} onClick={() => submit()}>{isNew ? "항목 추가" : "적용"}</button>
+        <button className="btn ghost" onClick={onCancel}>취소</button>
       </div>
       <p className="tiny" style={{ textAlign: "right" }}>적용한 뒤 목록 화면에서 [인증 항목 저장]을 눌러야 학생 화면에 반영돼요.</p>
     </div>

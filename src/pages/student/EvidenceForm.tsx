@@ -262,12 +262,12 @@ export function EvidenceForm({ student, program, task, backTo }: { student: Stud
       )}
 
       <div className="submit-bar">
-        {multi && drafts.length < 20 && (
-          <button className="btn ghost" onClick={() => setDrafts((ds) => [...ds, emptyDraft(ds[ds.length - 1]?.date)])}><PixelIcon name="plus" size={18} /> 기록 하나 더</button>
-        )}
         <button className="btn big ok" disabled={busy || !ready} onClick={submit}>
           {busy ? progress : drafts.length > 1 ? `${drafts.length}개 한꺼번에 올리기` : "인증 올리기"}
         </button>
+        {multi && drafts.length < 20 && (
+          <button className="btn ghost" onClick={() => setDrafts((ds) => [...ds, emptyDraft(ds[ds.length - 1]?.date)])}><PixelIcon name="plus" size={18} /> 기록 하나 더</button>
+        )}
       </div>
       <p className="tiny" style={{ textAlign: "right" }}>올린 기록은 선생님이 확인하면 횟수에 들어가요.</p>
     </>

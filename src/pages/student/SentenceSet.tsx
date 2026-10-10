@@ -67,8 +67,8 @@ export function SentenceSetPage({ student, program, task }: { student: StudentDo
           <span className="icon-text"><PixelIcon name="hand" size={20} /> 검사 요청할 수 있는 문장 <b>{ready.length}개</b></span>
           <div className="row">
             <button className="btn" onClick={() => requestCheck(ready.map((i) => i.no))}>모두 검사 요청</button>
-            <button className="btn ghost" onClick={() => setSelecting((s) => !s)}>{selecting ? "선택 취소" : "골라서 요청"}</button>
             {selecting && picked.size > 0 && <button className="btn ok" onClick={() => requestCheck([...picked])}>{picked.size}개 요청</button>}
+            <button className="btn ghost" onClick={() => setSelecting((s) => !s)}>{selecting ? "선택 취소" : "골라서 요청"}</button>
           </div>
         </div>
       )}

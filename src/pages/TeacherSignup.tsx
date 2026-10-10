@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import type { User } from "firebase/auth";
 import { httpsCallable } from "firebase/functions";
 import { functions } from "../firebase";
@@ -43,21 +43,47 @@ export function TeacherSignup({ user, existing, isSuper, onSuper }: { user: User
   const valid = school && name.trim() && (admin || homeroom || subject) && subjectOk;
   const isNew = meta ? !meta.opened : !school?.opened;
 
-  async function search() {
+  // 입력하는 대로 찾기: 입력이 멈추고 0.35초 뒤 검색, 같은 검색어는 다시 묻지 않고, 늦게 온 이전 결과는 버림
+  const cache = useRef(new Map<string, { schools: SchoolHit[]; message: string | null }>());
+  const latest = useRef("");
+  async function search(query = q.trim()) {
+    if (!query) return;
+    latest.current = query;
+    const hit = cache.current.get(query);
+    if (hit) {
+      setHits(hit.schools);
+      setSearchMsg(hit.message);
+      return;
+    }
     setSearching(true);
-    setSearchMsg(null);
     try {
-      const res = await httpsCallable<{ query: string }, { schools: SchoolHit[]; message: string | null }>(functions, "searchSchools")({ query: q.trim() });
+      const res = await httpsCallable<{ query: string }, { schools: SchoolHit[]; message: string | null }>(functions, "searchSchools")({ query });
+      cache.current.set(query, res.data);
+      if (latest.current !== query) return;
       setHits(res.data.schools);
       setSearchMsg(res.data.message);
     } catch (e) {
+      if (latest.current !== query) return;
       setHits([]);
       setManual(true);
       setSearchMsg((e as Error).message || "검색하지 못했어요.");
     } finally {
-      setSearching(false);
+      if (latest.current === query) setSearching(false);
     }
   }
+  useEffect(() => {
+    const query = q.trim();
+    if (!query) {
+      latest.current = "";
+      setHits(null);
+      setSearchMsg(null);
+      setSearching(false);
+      return;
+    }
+    const t = setTimeout(() => search(query), 350);
+    return () => clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [q]);
 
   async function pick(s: SchoolHit) {
     setSchool(s);
@@ -125,17 +151,16 @@ export function TeacherSignup({ user, existing, isSuper, onSuper }: { user: User
         {!school ? (
           <>
             <div className="row">
-              <input className="input" style={{ flex: 1, minWidth: 180 }} value={q} onChange={(e) => setQ(e.target.value)} onKeyDown={(e) => e.key === "Enter" && q.trim().length >= 2 && search()} placeholder="학교 이름 (예: 하주초등학교)" />
-              <button className="btn" disabled={q.trim().length < 2 || searching} onClick={search}><PixelIcon name="search" size={18} /> {searching ? "찾는 중…" : "검색"}</button>
+              <input className="input" style={{ flex: 1, minWidth: 180 }} value={q} autoFocus onChange={(e) => setQ(e.target.value)} onKeyDown={(e) => e.key === "Enter" && search()} placeholder="학교 이름을 입력하면 바로 찾아요 (예: 하주)" />
             </div>
-            <div className="tiny">교육부 NEIS 학교 정보에서 찾아요.</div>
+            <div className="tiny">{searching ? "찾는 중…" : hits && hits.length >= 30 ? "학교가 많아요. 이름을 더 입력하면 좁혀져요." : "교육부 NEIS 학교 정보에서 찾아요."}</div>
             {hits && (
-              <div className="stack" style={{ gap: 8 }}>
+              <div className="stack school-results" style={{ gap: 8 }}>
                 {hits.map((h) => (
                   <button key={h.schoolCode} className="school-result" onClick={() => pick(h)}>
                     <PixelIcon name="school" size={30} />
                     <span style={{ flex: 1 }}>
-                      <b>{h.name}</b> <span className="tiny">{h.kind}</span>
+                      <b><Highlight text={h.name} query={q.trim()} /></b> <span className="tiny">{h.kind}</span>
                       <br />
                       <span className="small muted">{h.jurisdiction || h.atptName} · {h.address}</span>
                     </span>
@@ -233,6 +258,19 @@ export function RoleBox({ icon, title, desc, on, locked, onToggle, children }: {
       </button>
       {on && children && <div className="role-body stack">{children}</div>}
     </div>
+  );
+}
+
+/** 검색어와 겹치는 부분 강조 */
+function Highlight({ text, query }: { text: string; query: string }): ReactNode {
+  const i = query ? text.indexOf(query) : -1;
+  if (i < 0) return text;
+  return (
+    <>
+      {text.slice(0, i)}
+      <mark className="hl">{text.slice(i, i + query.length)}</mark>
+      {text.slice(i + query.length)}
+    </>
   );
 }
 

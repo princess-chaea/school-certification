@@ -17,6 +17,7 @@ import { StaffApp } from "./pages/teacher/StaffApp";
 import type { StaffDoc, StudentDoc } from "./lib/types";
 import type { User } from "firebase/auth";
 import { DialogHost } from "./components/Modal";
+import { InstallPrompt } from "./components/InstallPrompt";
 
 export function App() {
   return (
@@ -38,6 +39,7 @@ function Gate() {
   const schoolId = s.schoolId;
   return (
     <TenantCtx.Provider value={schoolId}>
+      <InstallPrompt />
       <SchoolProvider schoolId={schoolId}>
         <ConfigProvider schoolId={schoolId}>
           {s.kind === "student" ? (

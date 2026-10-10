@@ -13,20 +13,29 @@ import { PixelIcon } from "../../components/Pixel";
 import { ScopeBar, useScope } from "./scope";
 import { useScopedStudents } from "./Overview";
 import { speak } from "../../lib/speech";
-import { programById } from "../../../shared/domain";
+import { activePrograms, programById } from "../../../shared/domain";
 
 /** 확인하기: 학생이 올린 기록 승인 + 문장 검사 (모든 학교 공통) */
 export function Review() {
   const [tab, setTab] = useState<"evidence" | "sentences">("evidence");
+  const config = useConfig();
+  const { scope, allowedPrograms } = useScope();
+  // 문장 검사는 고른 범위(항목·학년)에 '문장 연습' 과제가 있는 항목이 있을 때만 보임
+  const inScope = activePrograms(config, scope.grade).filter((p) => (scope.program ? p.id === scope.program : !allowedPrograms || allowedPrograms.includes(p.id)));
+  const hasSentences = inScope.some((p) => p.kind === "tasks" && (p.tasks ?? []).some((t) => t.kind === "sentences"));
+  const hasEvidence = inScope.some((p) => p.kind !== "tasks" || (p.tasks ?? []).some((t) => t.kind !== "sentences"));
+  const view = !hasSentences ? "evidence" : !hasEvidence ? "sentences" : tab;
   return (
     <div className="page">
       <PageHeader icon="check" title="확인하기" />
       <ScopeBar />
-      <div className="row" style={{ marginBottom: 12 }}>
-        <button className={`choice ${tab === "evidence" ? "on" : ""}`} onClick={() => setTab("evidence")}><PixelIcon name="camera" size={16} /> 올린 기록 승인</button>
-        <button className={`choice ${tab === "sentences" ? "on" : ""}`} onClick={() => setTab("sentences")}><PixelIcon name="mic" size={16} /> 문장 검사</button>
-      </div>
-      {tab === "evidence" ? <EvidenceQueue /> : <SentenceQueue />}
+      {hasSentences && hasEvidence && (
+        <div className="row" style={{ marginBottom: 12 }}>
+          <button className={`choice ${view === "evidence" ? "on" : ""}`} onClick={() => setTab("evidence")}><PixelIcon name="camera" size={16} /> 올린 기록 승인</button>
+          <button className={`choice ${view === "sentences" ? "on" : ""}`} onClick={() => setTab("sentences")}><PixelIcon name="mic" size={16} /> 문장 검사</button>
+        </div>
+      )}
+      {view === "evidence" ? <EvidenceQueue /> : <SentenceQueue />}
     </div>
   );
 }

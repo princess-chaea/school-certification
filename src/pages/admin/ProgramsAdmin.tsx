@@ -151,9 +151,9 @@ export function ProgramsAdmin() {
                   : `'${confirmDel.p.name}' 항목을 삭제할까요?\n아직 학생 기록은 없어요.`}
             </p>
           )}
-          <div className="row" style={{ justifyContent: "flex-end", marginTop: 12 }}>
-            <button className="btn ghost" onClick={() => setConfirmDel(null)}>취소</button>
+          <div className="modal-actions">
             <button className="btn danger" disabled={confirmDel.count === null} onClick={() => doDelete(confirmDel.p)}>{confirmDel.count ? "기록까지 삭제" : "삭제"}</button>
+            <button className="btn ghost" onClick={() => setConfirmDel(null)}>취소</button>
           </div>
           {!!confirmDel.count && <p className="tiny" style={{ margin: "8px 0 0" }}>[인증 항목 저장]을 눌러야 실제로 삭제돼요.</p>}
         </Modal>

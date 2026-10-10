@@ -71,12 +71,6 @@ export async function requireStaff(req: CallableRequest, schoolId: string, admin
   return { ...u, uid: req.auth.uid };
 }
 
-export function staffCanSeeStudent(u: StaffDoc, s: { grade: number; classNo: number }) {
-  if (u.role === "admin") return true;
-  if (u.homeroom && u.grade === s.grade && u.classNo === s.classNo) return true;
-  if (u.subject && (u.grades ?? []).includes(s.grade)) return true;
-  return false;
-}
 
 export function todayKey() {
   return new Date(Date.now() + 9 * 3600_000).toISOString().slice(0, 10); // KST 날짜

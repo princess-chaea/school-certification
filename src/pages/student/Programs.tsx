@@ -42,6 +42,17 @@ export function StudentHome({ student }: { student: StudentDoc }) {
         </div>
       </div>
 
+      {student.feedback && (
+        <div className="card flat row" style={{ marginTop: 14, alignItems: "flex-start", background: "var(--navy-50)" }}>
+          <PixelIcon name="speech" size={28} />
+          <div style={{ flex: 1 }}>
+            <div className="small" style={{ fontWeight: 700 }}>선생님 한마디</div>
+            <div style={{ whiteSpace: "pre-line" }}>{student.feedback}</div>
+            <div className="tiny">— {student.feedbackByName}</div>
+          </div>
+        </div>
+      )}
+
       <div className="grid grid-3" style={{ marginTop: 14 }}>
         {programs.map((x) => <ProgramCard key={x.id} program={x} progress={p[x.id] ?? { count: 0, medal: "none", thresholds: thresholdsFor(config, x, student.grade)! }} onClick={() => nav(`/do/${x.id}`)} />)}
       </div>

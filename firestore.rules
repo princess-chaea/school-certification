@@ -98,7 +98,11 @@ service cloud.firestore {
           || (isSelfStudent(sid) && resource.data.get('name', '') == '' && onlyChanges(['name', 'nameSetAt'])
               && request.resource.data.name is string && request.resource.data.name.trim().size() >= 2 && request.resource.data.name.size() <= 20)
           || ((isAdmin() || (isStaff() && isHomeroomOf(resource.data.grade, resource.data.classNo)))
-              && onlyChanges(['name', 'number', 'active', 'note', 'updatedAt']));
+              && onlyChanges(['name', 'number', 'active', 'note', 'updatedAt']))
+          // 선생님 한마디: 이 학생을 볼 수 있는 교사(담당자·담임·해당 학년 전담)
+          || (canSeeClass(resource.data.grade, resource.data.classNo)
+              && onlyChanges(['feedback', 'feedbackByName', 'feedbackAt'])
+              && request.resource.data.feedback is string && request.resource.data.feedback.size() <= 300);
         // 담임은 계정 없는 학생(1~2학년 등)을 자기 반에 직접 추가 가능 (계정 있는 학생은 관리자 CSV 등록)
         allow create: if isStaff() && isHomeroomOf(request.resource.data.grade, request.resource.data.classNo)
           && request.resource.data.email == '' && request.resource.data.year == currentYear();

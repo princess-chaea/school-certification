@@ -1,8 +1,6 @@
 import { useState } from "react";
 import { useParams } from "react-router-dom";
 import { doc, orderBy, where } from "firebase/firestore";
-import { httpsCallable } from "firebase/functions";
-import { functions } from "../../firebase";
 import { useCollection } from "../../lib/data";
 import { sp, useSchoolId } from "../../lib/tenant";
 import { useConfig } from "../../lib/config";
@@ -29,20 +27,20 @@ export function StudentDetail() {
   const session = useSession();
   const [student, setStudent] = useState<StudentDoc | null>(null);
   const [zoom, setZoom] = useState<string | null>(null);
-  const [draft, setDraft] = useState<string | null>(null);
+  const [note, setNote] = useState<string | null>(null); // 선생님 한마디 (편집 중인 값)
   const [busy, setBusy] = useState(false);
   useEffect(() => onSnapshot(doc(db, sp(schoolId, `students/${sid}`)), (s) => setStudent(s.exists() ? (s.data() as StudentDoc) : null), () => setStudent(null)), [schoolId, sid]);
   const cons = student ? [where("year", "==", student.year), where("grade", "==", student.grade), where("classNo", "==", student.classNo), ...(scope.program ? [where("program", "==", scope.program)] : []), where("sid", "==", sid), orderBy("createdAt", "desc")] : [];
   const { rows } = useCollection<Submission>(student ? sp(schoolId, "submissions") : null, cons, [schoolId, sid, student?.year, scope.program]);
-
-  async function ai(kind: "feedback" | "record") {
+  async function saveNote(text: string) {
     setBusy(true);
-    setDraft(null);
     try {
-      const res = await httpsCallable<unknown, { text: string }>(functions, "draftComment")({ schoolId, sid, kind });
-      setDraft(res.data.text);
+      const me = session.kind === "staff" ? session.staff : null;
+      await updateDoc(fsDoc(db, sp(schoolId, `students/${sid}`)), text ? { feedback: text, feedbackByName: me?.name ?? "선생님", feedbackAt: serverTimestamp() } : { feedback: "", feedbackByName: "", feedbackAt: serverTimestamp() });
+      toast(text ? "학생 홈에 선생님 한마디가 보여요." : "선생님 한마디를 지웠어요.");
+      setNote(null);
     } catch (e) {
-      toast((e as Error).message);
+      toast("저장하지 못했어요: " + (e as Error).message);
     } finally {
       setBusy(false);
     }
@@ -70,18 +68,27 @@ export function StudentDetail() {
       <div className="grid grid-3">
         {activePrograms(config, student.grade).map((x) => <ProgramCard key={x.id} program={x} progress={p[x.id] ?? { count: 0, medal: "none", thresholds: thresholdsFor(config, x, student.grade)! }} />)}
       </div>
-      <div className="section-title">AI 초안 (선생님이 확인 후 사용)</div>
-      <div className="row">
-        <button className="btn secondary" disabled={busy} onClick={() => ai("feedback")}><PixelIcon name="speech" size={16} /> 격려 피드백 초안</button>
-        <button className="btn secondary" disabled={busy} onClick={() => ai("record")}><PixelIcon name="pen" size={16} /> 누가기록 초안</button>
-        {busy && <span className="small muted">작성 중…</span>}
+      <div className="section-title">선생님 한마디 (선택 · 학생 홈에 보여요)</div>
+      <div className="card flat stack" style={{ background: "var(--navy-50)" }}>
+        {note === null ? (
+          <>
+            {student.feedback ? <div style={{ whiteSpace: "pre-line" }}>“{student.feedback}” <span className="tiny">— {student.feedbackByName}</span></div> : <span className="small muted">아직 남긴 한마디가 없어요. 격려나 다음 도전을 짧게 적어 주세요.</span>}
+            <div className="row" style={{ gap: 6 }}>
+              <button className="btn secondary sm" onClick={() => setNote(student.feedback ?? "")}><PixelIcon name="speech" size={14} /> {student.feedback ? "고치기" : "한마디 남기기"}</button>
+              {student.feedback && <button className="btn ghost sm" disabled={busy} onClick={() => saveNote("")}>지우기</button>}
+            </div>
+          </>
+        ) : (
+          <>
+            <textarea className="input" autoFocus maxLength={300} value={note} onChange={(e) => setNote(e.target.value)} placeholder="예: 꾸준히 기록하는 모습이 멋져요! 다음엔 은장에 도전해 볼까요?" style={{ minHeight: 90 }} />
+            <div className="row" style={{ gap: 6, justifyContent: "flex-end" }}>
+              <span className="tiny" style={{ marginRight: "auto" }}>{note.length}/300</span>
+              <button className="btn ghost sm" onClick={() => setNote(null)}>취소</button>
+              <button className="btn sm" disabled={busy || !note.trim()} onClick={() => saveNote(note.trim())}>{busy ? "저장 중…" : "저장"}</button>
+            </div>
+          </>
+        )}
       </div>
-      {draft && (
-        <div className="card flat stack" style={{ marginTop: 10, background: "var(--navy-50)" }}>
-          <textarea className="input" value={draft} onChange={(e) => setDraft(e.target.value)} style={{ minHeight: 100 }} />
-          <div><button className="btn sm" onClick={() => { navigator.clipboard?.writeText(draft); toast("복사했어요."); }}>복사</button></div>
-        </div>
-      )}
       <div className="section-title">기록 ({rows?.length ?? 0})</div>
       <div className="stack">
         {(rows ?? []).map((r) => (

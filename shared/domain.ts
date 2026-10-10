@@ -63,7 +63,7 @@ export interface ProgramDef {
 export interface AppConfig {
   medalMultipliers: { bronze: number; silver: number; gold: number };
   programs: ProgramDef[];
-  ai: { enabled: boolean; photoModel: string; teacherModel: string; dailyLimit: number }; // 교사 업무 보조 전용 (학생에게 제공하지 않음)
+  ai: { enabled: boolean; photoModel: string; dailyLimit: number }; // 학생 제출 1차 확인 전용 (결과는 교사만 봄)
   certificate: { title: string; body: string; showSealOnWeb: boolean; sealSizeMm: number }; // 수여일 = 학생별 인증 달성일 (일괄 출력 때 한 날짜로 맞출 수 있음)
 }
 
@@ -104,7 +104,7 @@ export const HAJU_PROGRAMS: ProgramDef[] = [
 export const DEFAULT_CONFIG: AppConfig = {
   medalMultipliers: { bronze: 1, silver: 1.5, gold: 2 },
   programs: [],
-  ai: { enabled: true, photoModel: "claude-haiku-5-5", teacherModel: "claude-sonnet-5-5", dailyLimit: 3000 },
+  ai: { enabled: true, photoModel: "claude-haiku-5-5", dailyLimit: 3000 },
   certificate: {
     title: "학교장 인증서",
     body: "위 학생은 「2026 도전! 꿈 성취 학교장 인증제」에 참가하여 위 분야에서 인증받았기에 이 증서를 드립니다.",

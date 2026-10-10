@@ -5,8 +5,10 @@
     <link rel="icon" type="image/png" href="/favicon.png" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
     <meta name="theme-color" content="#1e3a8a" />
-    <!-- 폰 브라우저(삼성 인터넷·크롬)의 강제 다크모드가 픽셀 아이콘·색을 뒤집지 않도록 밝은 화면만 사용 -->
-    <meta name="color-scheme" content="only light" />
+    <!-- 폰 브라우저(삼성 인터넷·크롬)의 강제 다크모드가 픽셀 아이콘·색을 뒤집지 않게:
+         삼성 인터넷은 'only light'를 무시하고, 사이트가 다크 지원을 밝혀야 강제 변환을 멈춤.
+         실제 화면 색은 styles.css 에서 직접 지정해 늘 밝게 유지 -->
+    <meta name="color-scheme" content="light dark" />
     <link rel="apple-touch-icon" href="/icons/icon-192.png" />
     <link rel="preload" href="/fonts/HakgyoansimPosterB.woff2" as="font" type="font/woff2" crossorigin />
     <link rel="preload" href="/fonts/KERISBAEUM-B.woff2" as="font" type="font/woff2" crossorigin />

@@ -1,3 +1,4 @@
+import { ProgramFilter } from "../../components/ProgramFilter";
 import { useMemo, useState } from "react";
 import { useCollection } from "../../lib/data";
 import { sp, useSchoolId } from "../../lib/tenant";
@@ -87,8 +88,7 @@ export function Certificates() {
     <div className="page">
       <PageHeader icon="trophy" title="인증서 출력" right={<span className="chip ok">대상 {list.length}장</span>} />
       <div className="scope-bar">
-        <button className={`choice ${program === "all" ? "on" : ""}`} onClick={() => setProgram("all")}>전 분야</button>
-        {PROGRAMS.map((p) => <button key={p} className={`choice ${program === p ? "on" : ""}`} onClick={() => setProgram(p)}><PixelIcon name={programById(config, p)?.icon ?? "star"} size={16} /> {programById(config, p)?.name}</button>)}
+        <ProgramFilter programs={PROGRAMS.map((p) => programById(config, p)).filter((p): p is NonNullable<typeof p> => !!p)} value={program === "all" ? null : program} onChange={(id) => setProgram(id ?? "all")} allLabel="전 분야" />
         <select className="input sm" value={grade} onChange={(e) => setGrade(Number(e.target.value))}><option value={0}>전 학년</option>{GRADES.map((g) => <option key={g} value={g}>{g}학년</option>)}</select>
         <label className="row small" style={{ gap: 4 }}><input type="checkbox" checked={includeDemo} onChange={(e) => setIncludeDemo(e.target.checked)} /> 예시 학생 포함</label>
       </div>

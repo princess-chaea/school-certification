@@ -4,6 +4,7 @@ import { LogoutButton } from "./Modal";
 import { IS_EMULATOR } from "../firebase";
 import { useSchool } from "../lib/school";
 import { PixelIcon } from "./Pixel";
+import { holdNavigation } from "../lib/navGuard";
 
 export interface Tab {
   to: string;
@@ -19,6 +20,11 @@ export function Layout({ who, tabs, children, extra }: { who: string; tabs: Tab[
   const school = useSchool();
   const [more, setMore] = useState(false);
   const loc = useLocation();
+  const go = useNavigate();
+  // 편집 중(저장 안 함)이면 이동 전에 확인 팝업
+  const guardClick = (to: string) => (e: React.MouseEvent) => {
+    if (holdNavigation(() => go(to))) e.preventDefault();
+  };
   const phoneTabs = tabs.length > PHONE_MAX ? tabs.slice(0, PHONE_MAX - 1) : tabs;
   const moreTabs = tabs.length > PHONE_MAX ? tabs.slice(PHONE_MAX - 1) : [];
   const moreActive = moreTabs.some((t) => (t.end ? loc.pathname === t.to : loc.pathname.startsWith(t.to)));
@@ -39,7 +45,7 @@ export function Layout({ who, tabs, children, extra }: { who: string; tabs: Tab[
         <>
           <nav className="nav-tabs desktop" aria-label="주 메뉴">
             {tabs.map((t) => (
-              <NavLink key={t.to} to={t.to} end={t.end} className={({ isActive }) => (isActive ? "active" : "")}>
+              <NavLink key={t.to} to={t.to} end={t.end} onClick={guardClick(t.to)} className={({ isActive }) => (isActive ? "active" : "")}>
                 <PixelIcon name={t.icon} size={22} />
                 <span className="lbl">{t.label}</span>
               </NavLink>
@@ -47,7 +53,7 @@ export function Layout({ who, tabs, children, extra }: { who: string; tabs: Tab[
           </nav>
           <nav className="nav-tabs phone" aria-label="주 메뉴">
             {phoneTabs.map((t) => (
-              <NavLink key={t.to} to={t.to} end={t.end} className={({ isActive }) => (isActive ? "active" : "")}>
+              <NavLink key={t.to} to={t.to} end={t.end} onClick={guardClick(t.to)} className={({ isActive }) => (isActive ? "active" : "")}>
                 <PixelIcon name={t.icon} size={26} />
                 <span className="lbl">{t.label}</span>
               </NavLink>
@@ -65,7 +71,7 @@ export function Layout({ who, tabs, children, extra }: { who: string; tabs: Tab[
                 <div className="hud small muted">MENU</div>
                 <div className="sheet-grid">
                   {moreTabs.map((t) => (
-                    <NavLink key={t.to} to={t.to} end={t.end} onClick={() => setMore(false)} className={({ isActive }) => `sheet-item ${isActive ? "active" : ""}`}>
+                    <NavLink key={t.to} to={t.to} end={t.end} onClick={(e) => { setMore(false); guardClick(t.to)(e); }} className={({ isActive }) => `sheet-item ${isActive ? "active" : ""}`}>
                       <PixelIcon name={t.icon} size={32} />
                       <span>{t.label}</span>
                     </NavLink>

@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { setNavGuard } from "../../lib/navGuard";
 import { addDoc, collection, doc, getCountFromServer, query, serverTimestamp, setDoc, where } from "firebase/firestore";
 import { httpsCallable } from "firebase/functions";
 import { db, functions } from "../../firebase";
@@ -28,29 +29,48 @@ export function ProgramsAdmin() {
   const [programs, setPrograms] = useState<ProgramDef[]>(config.programs);
   const [editing, setEditing] = useState<ProgramDef | null>(null);
   const [gallery, setGallery] = useState(false);
-  const [dirty, setDirty] = useState(false);
   const [busy, setBusy] = useState(false);
-  const [removed, setRemoved] = useState<string[]>([]); // 저장할 때 학생 기록까지 지울 항목
   const [confirmDel, setConfirmDel] = useState<{ p: ProgramDef; count: number | null } | null>(null);
   useEffect(() => {
-    if (!dirty) setPrograms(config.programs);
-  }, [config.programs, dirty]);
+    if (!busy) setPrograms(config.programs);
+  }, [config.programs, busy]);
 
-  function change(next: ProgramDef[]) {
+  /** 바뀐 목록을 바로 저장 (적용·순서·숨기기·삭제 모두 한 번에 반영 — 따로 [저장]을 누를 필요 없음) */
+  async function commit(next: ProgramDef[], opts: { recompute?: boolean; removedId?: string; done?: string } = {}) {
+    const prev = programs;
     setPrograms(next);
-    setDirty(true);
+    setBusy(true);
+    try {
+      await setDoc(doc(db, sp(schoolId, "config/app")), { programs: next, updatedAt: serverTimestamp() }, { merge: true });
+      let deleted = 0;
+      if (opts.removedId) {
+        const d = await httpsCallable<unknown, { submissions: number; englishItems: number }>(functions, "deleteProgramData")({ schoolId, programId: opts.removedId });
+        deleted = d.data.submissions + d.data.englishItems;
+      }
+      if (opts.recompute !== false) await httpsCallable<unknown, { students: number }>(functions, "recomputeAll")({ schoolId });
+      toast(`${opts.done ?? "저장했어요."}${deleted ? ` 학생 기록 ${deleted}건을 삭제했어요.` : ""}`);
+      return true;
+    } catch (e) {
+      setPrograms(prev);
+      toast("저장하지 못했어요: " + (e as Error).message);
+      return false;
+    } finally {
+      setBusy(false);
+    }
   }
-  function upsert(p: ProgramDef) {
+  async function upsert(p: ProgramDef) {
     const i = programs.findIndex((x) => x.id === p.id);
-    change(i >= 0 ? programs.map((x, j) => (j === i ? p : x)) : [...programs, p]);
-    setEditing(null);
+    const next = i >= 0 ? programs.map((x, j) => (j === i ? p : x)) : [...programs, p];
+    const ok = await commit(next, { done: i >= 0 ? "저장했어요. 학생 화면에 바로 반영돼요." : "추가했어요. 학생 화면에 바로 보여요." });
+    if (ok) setEditing(null);
+    return ok;
   }
   function move(i: number, d: -1 | 1) {
     const j = i + d;
     if (j < 0 || j >= programs.length) return;
     const next = [...programs];
     [next[i], next[j]] = [next[j], next[i]];
-    change(next);
+    void commit(next, { recompute: false, done: "순서를 바꿨어요." });
   }
   function addTemplate(t: ProgramTemplate) {
     let id = t.id;
@@ -64,7 +84,6 @@ export function ProgramsAdmin() {
   /** 삭제 전: 이 항목에 쌓인 학생 기록 수를 세어 경고 팝업 */
   async function askDelete(p: ProgramDef) {
     setConfirmDel({ p, count: null });
-    if (!config.programs.some((x) => x.id === p.id)) return setConfirmDel({ p, count: 0 }); // 아직 저장 안 한 새 항목
     try {
       const [subs, items] = await Promise.all([
         getCountFromServer(query(collection(db, sp(schoolId, "submissions")), where("program", "==", p.id))),
@@ -75,32 +94,12 @@ export function ProgramsAdmin() {
       setConfirmDel({ p, count: -1 }); // 세지 못함 → 기록이 있을 수 있다고 경고
     }
   }
-  function doDelete(p: ProgramDef) {
-    change(programs.filter((x) => x.id !== p.id));
-    if (config.programs.some((x) => x.id === p.id)) setRemoved((r) => [...r, p.id]);
+  async function doDelete(p: ProgramDef) {
     setConfirmDel(null);
-  }
-  async function save() {
-    setBusy(true);
-    try {
-      await setDoc(doc(db, sp(schoolId, "config/app")), { programs, updatedAt: serverTimestamp() }, { merge: true });
-      let deleted = 0;
-      for (const programId of removed.filter((id) => !programs.some((p) => p.id === id))) {
-        const d = await httpsCallable<unknown, { submissions: number; englishItems: number }>(functions, "deleteProgramData")({ schoolId, programId });
-        deleted += d.data.submissions + d.data.englishItems;
-      }
-      setRemoved([]);
-      const r = await httpsCallable<unknown, { students: number }>(functions, "recomputeAll")({ schoolId });
-      toast(`저장했어요.${deleted ? ` 학생 기록 ${deleted}건을 삭제했어요.` : ""} 학생 ${r.data.students}명의 진행률을 다시 계산했어요.`);
-      setDirty(false);
-    } catch (e) {
-      toast((e as Error).message);
-    } finally {
-      setBusy(false);
-    }
+    await commit(programs.filter((x) => x.id !== p.id), { removedId: p.id, done: `'${p.name}' 항목을 삭제했어요.` });
   }
 
-  if (editing) return <ProgramEditor initial={editing} onCancel={() => setEditing(null)} onSave={upsert} existingIds={programs.map((p) => p.id)} />;
+  if (editing) return <ProgramEditor initial={editing} onCancel={() => setEditing(null)} onSave={upsert} saving={busy} existingIds={programs.map((p) => p.id)} />;
 
   return (
     <div className="page">
@@ -122,21 +121,16 @@ export function ProgramsAdmin() {
               </span>
             </span>
             <div className="row row-actions" style={{ gap: 4 }}>
-              <button className="btn ghost sm" onClick={() => move(i, -1)} aria-label="위로">▲</button>
-              <button className="btn ghost sm" onClick={() => move(i, 1)} aria-label="아래로">▼</button>
-              <button className="btn ghost sm" onClick={() => change(programs.map((x) => (x.id === p.id ? { ...x, enabled: !x.enabled } : x)))}>{p.enabled ? "숨기기" : "보이기"}</button>
-              <button className="btn secondary sm" onClick={() => setEditing(p)}>편집</button>
-              <button className="btn ghost sm" onClick={() => askDelete(p)}>삭제</button>
+              <button className="btn ghost sm" disabled={busy} onClick={() => move(i, -1)} aria-label="위로">▲</button>
+              <button className="btn ghost sm" disabled={busy} onClick={() => move(i, 1)} aria-label="아래로">▼</button>
+              <button className="btn ghost sm" disabled={busy} onClick={() => commit(programs.map((x) => (x.id === p.id ? { ...x, enabled: !x.enabled } : x)), { done: p.enabled ? `'${p.name}'을(를) 학생 화면에서 숨겼어요.` : `'${p.name}'을(를) 다시 보이게 했어요.` })}>{p.enabled ? "숨기기" : "보이기"}</button>
+              <button className="btn secondary sm" disabled={busy} onClick={() => setEditing(p)}>편집</button>
+              <button className="btn ghost sm" disabled={busy} onClick={() => askDelete(p)}>삭제</button>
             </div>
           </div>
         ))}
       </div>
-      {dirty && (
-        <div className="submit-bar">
-          <button className="btn big" disabled={busy} onClick={save}>{busy ? "저장 중…" : "인증 항목 저장"}</button>
-          <button className="btn ghost" onClick={() => { setPrograms(config.programs); setRemoved([]); setDirty(false); }}>되돌리기</button>
-        </div>
-      )}
+      {busy && <div className="small muted" style={{ textAlign: "right", marginTop: 8 }}>저장하는 중…</div>}
       <FeatureRequest />
       {confirmDel && (
         <Modal title="인증 항목 삭제" icon="alert" onClose={() => setConfirmDel(null)}>
@@ -155,7 +149,6 @@ export function ProgramsAdmin() {
             <button className="btn danger" disabled={confirmDel.count === null} onClick={() => doDelete(confirmDel.p)}>{confirmDel.count ? "기록까지 삭제" : "삭제"}</button>
             <button className="btn ghost" onClick={() => setConfirmDel(null)}>취소</button>
           </div>
-          {!!confirmDel.count && <p className="tiny" style={{ margin: "8px 0 0" }}>[인증 항목 저장]을 눌러야 실제로 삭제돼요.</p>}
         </Modal>
       )}
       {gallery && <TemplateGallery onPick={addTemplate} onClose={() => setGallery(false)} existing={programs.map((p) => p.templateId).filter(Boolean) as string[]} />}
@@ -202,13 +195,29 @@ function TemplateGallery({ onPick, onClose, existing }: { onPick: (t: ProgramTem
   );
 }
 
-function ProgramEditor({ initial, onCancel, onSave, existingIds }: { initial: ProgramDef; onCancel: () => void; onSave: (p: ProgramDef) => void; existingIds: string[] }) {
+function ProgramEditor({ initial, onCancel, onSave, saving, existingIds }: { initial: ProgramDef; onCancel: () => void; onSave: (p: ProgramDef) => Promise<boolean>; saving?: boolean; existingIds: string[] }) {
   const [p, setP] = useState<ProgramDef>(initial);
+  const [leave, setLeave] = useState<null | (() => void)>(null); // 저장 안 하고 나가려 할 때 이어서 할 이동
+  const dirty = JSON.stringify(p) !== JSON.stringify(initial);
+  useEffect(() => {
+    if (!dirty) return;
+    setNavGuard((proceed) => setLeave(() => proceed));
+    const warn = (e: BeforeUnloadEvent) => e.preventDefault(); // 새로고침·창 닫기
+    window.addEventListener("beforeunload", warn);
+    return () => {
+      setNavGuard(null);
+      window.removeEventListener("beforeunload", warn);
+    };
+  }, [dirty]);
+  const cancel = () => (dirty ? setLeave(() => onCancel) : onCancel());
   const [iconPick, setIconPick] = useState<"change" | "required" | null>(null);
   const iconLabel = ICON_GROUPS.flatMap((g) => g.icons).find(([n]) => n === p.icon)?.[1] ?? p.icon;
-  function submit(next = p) {
-    if (!next.icon) return setIconPick("required"); // 아이콘 없이 추가하면 고르는 팝업부터
-    onSave({ ...next, name: next.name.trim() });
+  async function submit(next = p) {
+    if (!next.icon) {
+      setIconPick("required"); // 아이콘 없이 추가하면 고르는 팝업부터
+      return false;
+    }
+    return onSave({ ...next, name: next.name.trim() });
   }
   const set = (patch: Partial<ProgramDef>) => setP((x) => ({ ...x, ...patch }));
   const toggle = <T,>(arr: T[], v: T) => (arr.includes(v) ? arr.filter((x) => x !== v) : [...arr, v]);
@@ -217,7 +226,7 @@ function ProgramEditor({ initial, onCancel, onSave, existingIds }: { initial: Pr
 
   return (
     <div className="page narrow">
-      <PageHeader icon={p.icon || "plus"} title={isNew ? "인증 항목 추가" : "인증 항목 편집"} right={<button className="btn ghost sm" onClick={onCancel}>취소</button>} />
+      <PageHeader icon={p.icon || "plus"} title={isNew ? "인증 항목 추가" : "인증 항목 편집"} right={<button className="btn ghost sm" onClick={cancel}>취소</button>} />
       <div className="card px-card stack">
         <div className="row">
           <button className="icon-box" style={{ width: 64, height: 64, cursor: "pointer" }} onClick={() => setIconPick("change")} aria-label="아이콘 고르기">{p.icon ? <PixelIcon name={p.icon} size={44} /> : <span className="muted" style={{ fontSize: 28, fontWeight: 800 }}>?</span>}</button>
@@ -329,10 +338,20 @@ function ProgramEditor({ initial, onCancel, onSave, existingIds }: { initial: Pr
         </div>
       </div>
       <div className="submit-bar">
-        <button className="btn big" disabled={!valid} onClick={() => submit()}>{isNew ? "항목 추가" : "적용"}</button>
-        <button className="btn ghost" onClick={onCancel}>취소</button>
+        <button className="btn big" disabled={!valid || saving} onClick={() => submit()}>{saving ? "저장 중…" : isNew ? "추가하고 저장" : "저장"}</button>
+        <button className="btn ghost" onClick={cancel}>취소</button>
       </div>
-      <p className="tiny" style={{ textAlign: "right" }}>적용한 뒤 목록 화면에서 [인증 항목 저장]을 눌러야 학생 화면에 반영돼요.</p>
+      <p className="tiny" style={{ textAlign: "right" }}>저장하면 학생 화면에 바로 반영돼요.</p>
+      {leave && (
+        <Modal title="저장하지 않은 내용이 있어요" icon="alert" onClose={() => setLeave(null)}>
+          <p style={{ margin: 0, lineHeight: 1.7 }}>'{p.name || "새 인증 항목"}'에서 고친 내용을 저장할까요?<br />저장하지 않으면 고친 내용이 사라져요.</p>
+          <div className="modal-actions">
+            <button className="btn" autoFocus disabled={!valid || saving} onClick={async () => { const go = leave; setLeave(null); setNavGuard(null); if (await submit()) go(); }}>{saving ? "저장 중…" : "저장하고 나가기"}</button>
+            <button className="btn ghost danger-text" onClick={() => { const go = leave; setLeave(null); setNavGuard(null); go(); }}>저장 안 함</button>
+            <button className="btn ghost" onClick={() => setLeave(null)}>계속 편집</button>
+          </div>
+        </Modal>
+      )}
     </div>
   );
 }

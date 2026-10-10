@@ -45,7 +45,8 @@
   color: var(--ink);
   background: var(--bg);
   -webkit-text-size-adjust: 100%;
-  color-scheme: only light; /* 브라우저 강제 다크모드 끄기 */
+  /* 다크 지원을 밝혀야 브라우저(삼성 인터넷·크롬)가 강제 다크 변환을 하지 않음. 실제 색은 아래 변수로 늘 밝게 */
+  color-scheme: light dark;
   /* 한글은 낱말 단위로 줄바꿈 ("로그아/웃"처럼 글자 중간에서 끊기지 않게) */
   word-break: keep-all;
   overflow-wrap: anywhere;
@@ -467,3 +468,10 @@ mark.hl { background: #fee761; color: inherit; padding: 0 1px; border-radius: 3p
 /* 팝업 제목줄: 폰에서도 ✕ 가 제목 옆에 (페이지 머리줄의 줄바꿈 규칙을 팝업에는 적용하지 않음) */
 .dialog .page-head { flex-wrap: nowrap; }
 .dialog .page-head-right { width: auto; }
+
+/* ── 인증 항목 필터 (아이콘 + 영역) ── */
+.program-filter { display: flex; flex-direction: column; gap: 4px; }
+.program-filter-row { display: flex; flex-wrap: wrap; gap: 6px; }
+.pf-chip { display: inline-flex; align-items: center; gap: 5px; padding: 5px 11px 5px 7px; border: 2px solid var(--line); border-radius: 10px; background: #fff; font: inherit; font-size: .88rem; font-weight: 700; color: var(--ink-2); cursor: pointer; white-space: nowrap; }
+.pf-chip.on { border-color: #1f2240; background: var(--navy-50); color: var(--navy); box-shadow: 2px 2px 0 #1f2240; }
+.pf-picked { color: var(--navy); font-weight: 700; padding-left: 2px; }

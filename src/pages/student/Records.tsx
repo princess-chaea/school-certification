@@ -1,3 +1,4 @@
+import { ProgramFilter } from "../../components/ProgramFilter";
 import { useState } from "react";
 import { useConfig } from "../../lib/config";
 import { PageHeader } from "../../components/Layout";
@@ -26,11 +27,8 @@ export function Records({ student }: { student: StudentDoc }) {
     <div className="page narrow">
       <Lightbox url={zoom} onClose={() => setZoom(null)} />
       <PageHeader icon="log" title="내 기록" />
-      <div className="row" style={{ marginBottom: 12 }}>
-        <button className={`choice ${filter === "all" ? "on" : ""}`} onClick={() => setFilter("all")}>전체</button>
-        {activePrograms(config, student.grade).map((p) => (
-          <button key={p.id} className={`choice ${filter === p.id ? "on" : ""}`} onClick={() => setFilter(p.id)}><PixelIcon name={p.icon} size={16} /> {p.name}</button>
-        ))}
+      <div style={{ marginBottom: 12 }}>
+        <ProgramFilter programs={activePrograms(config, student.grade)} value={filter === "all" ? null : filter} onChange={(id) => setFilter(id ?? "all")} />
       </div>
       <div className="stack">
         {rows === null && <div className="muted">불러오는 중…</div>}

@@ -6,7 +6,8 @@ import { AiChip } from "./Review";
 import { sp, useSchoolId } from "../../lib/tenant";
 import { useConfig } from "../../lib/config";
 import { useSchool } from "../../lib/school";
-import type { Submission } from "../../lib/types";
+import type { EnglishItem, Submission } from "../../lib/types";
+import { EnglishGroupCard, englishGroups, recordTime } from "../../components/EnglishItemCard";
 import { fmtDate, fmtDateTime } from "../../lib/format";
 import { Empty, Lightbox, StorageAudio, StorageImage, StorageLink, toast } from "../../components/ui";
 import { PixelIcon } from "../../components/Pixel";
@@ -37,10 +38,21 @@ export function Feed() {
   cons.push(orderBy("createdAt", "desc"), limit(max));
   const { rows, error } = useCollection<Submission>(sp(schoolId, "submissions"), cons, [schoolId, school.year, scope.grade, scope.classNo, scope.program, max]);
 
+  // 영어 문장 녹음(검사 요청·인정·다시 하기): 최근 바뀐 것부터, 학생·과제별로 묶어 함께 보여 줌
+  const eCons: QueryConstraint[] = [where("year", "==", school.year), where("grade", "==", scope.grade)];
+  if (scope.classNo) eCons.push(where("classNo", "==", scope.classNo));
+  if (scope.program) eCons.push(where("program", "==", scope.program));
+  eCons.push(orderBy("updatedAt", "desc"), limit(max * 5));
+  const { rows: items } = useCollection<EnglishItem>(sp(schoolId, "englishItems"), eCons, [schoolId, school.year, scope.grade, scope.classNo, scope.program, max]);
+
   const names = useMemo(() => new Map((students ?? []).map((s) => [s.id, `${s.classNo}-${s.number} ${s.name}`])), [students]);
   const ai = useAiReviews((rows ?? []).map((r) => r.id));
   const suspect = (id: string) => Boolean(ai.get(id) && ai.get(id)!.verdict !== "ok");
   const list = (rows ?? []).filter((r) => (showDeleted ? true : r.status !== "deleted")).filter((r) => (onlySuspect ? suspect(r.id) : true));
+  const entries = [
+    ...list.map((r) => ({ at: recordTime(r.createdAt), sub: r, group: null })),
+    ...(onlySuspect ? [] : englishGroups(items, true).map((g) => ({ at: g.at, sub: null, group: g }))),
+  ].sort((a, b) => b.at - a.at);
   const suspectCount = (rows ?? []).filter((r) => r.status !== "deleted" && suspect(r.id)).length;
 
   async function remove(id: string) {
@@ -66,8 +78,8 @@ export function Feed() {
       {error && <div className="chip red">불러오지 못했어요: {error}</div>}
       <div className="stack">
         {rows === null && <div className="muted">불러오는 중…</div>}
-        {rows && list.length === 0 && <Empty>기록이 없어요.</Empty>}
-        {list.map((r) => (
+        {rows && entries.length === 0 && <Empty>기록이 없어요.</Empty>}
+        {entries.map(({ sub: r, group }) => group ? <EnglishGroupCard key={group.key} group={group} config={config} who={names.get(group.sid) ?? group.sid} /> : r && (
           <div key={r.id} className={`card flat sub-card ${r.status === "deleted" ? "deleted" : ""}`}>
             {r.photoPath ? <StorageImage path={r.photoPath} onOpen={setZoom} /> : <div className="thumb"><PixelIcon name={r.audioPath ? "mic" : r.source === "teacher" ? "eye" : programById(config, r.program)?.icon ?? "star"} size={32} /></div>}
             <div className="stack" style={{ gap: 4, minWidth: 0 }}>

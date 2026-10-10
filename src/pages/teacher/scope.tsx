@@ -1,3 +1,4 @@
+import { ProgramFilter } from "../../components/ProgramFilter";
 import { createContext, useContext, useState, type ReactNode } from "react";
 import type { StaffDoc } from "../../lib/types";
 import { classesOf, GRADES } from "../../lib/classes";
@@ -84,14 +85,7 @@ export function ScopeBar({ showProgram = true, only }: { showProgram?: boolean; 
         </>
       )}
       {showProgram && (
-        <div className="row" style={{ gap: 6 }}>
-          {!programRequired && <button className={`choice ${scope.program === null ? "on" : ""}`} onClick={() => setScope({ ...scope, program: null })}>전체</button>}
-          {programs.map((p) => (
-            <button key={p.id} className={`choice ${scope.program === p.id ? "on" : ""}`} onClick={() => setScope({ ...scope, program: p.id })}>
-              <PixelIcon name={p.icon} size={16} /> {p.name}
-            </button>
-          ))}
-        </div>
+        <ProgramFilter programs={programs} value={scope.program} onChange={(id) => setScope({ ...scope, program: id })} allLabel={programRequired ? null : "전체"} />
       )}
     </div>
   );

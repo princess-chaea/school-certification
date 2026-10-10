@@ -115,10 +115,10 @@ export function Settings() {
       </Section>
 
       <Section title="금·은·동 단계 (모든 증빙형 항목 공통)">
-        <div className="row small">
-          <PixelMedal medal="bronze" size={28} /> 동장 = 항목별 인증 기준(계획서) ·
-          <PixelMedal medal="silver" size={28} /> 은장 = 동 ×<input className="input sm" type="number" step={0.1} min={1} style={{ width: 70 }} value={cfg.medalMultipliers.silver} onChange={(e) => setCfg({ ...cfg, medalMultipliers: { ...cfg.medalMultipliers, silver: Number(e.target.value) || 1.5 } })} />
-          <PixelMedal medal="gold" size={28} /> 금장 = 동 ×<input className="input sm" type="number" step={0.1} min={1} style={{ width: 70 }} value={cfg.medalMultipliers.gold} onChange={(e) => setCfg({ ...cfg, medalMultipliers: { ...cfg.medalMultipliers, gold: Number(e.target.value) || 2 } })} />
+        <div className="stack small" style={{ gap: 8 }}>
+          <span className="row" style={{ gap: 6 }}><PixelMedal medal="bronze" size={28} /> 동장 = 항목별 인증 기준(계획서)</span>
+          <span className="row" style={{ gap: 6 }}><PixelMedal medal="silver" size={28} /> 은장 = 동 ×<input className="input sm" type="number" step={0.1} min={1} style={{ width: 70 }} value={cfg.medalMultipliers.silver} onChange={(e) => setCfg({ ...cfg, medalMultipliers: { ...cfg.medalMultipliers, silver: Number(e.target.value) || 1.5 } })} /></span>
+          <span className="row" style={{ gap: 6 }}><PixelMedal medal="gold" size={28} /> 금장 = 동 ×<input className="input sm" type="number" step={0.1} min={1} style={{ width: 70 }} value={cfg.medalMultipliers.gold} onChange={(e) => setCfg({ ...cfg, medalMultipliers: { ...cfg.medalMultipliers, gold: Number(e.target.value) || 2 } })} /></span>
         </div>
         <span className="small muted">항목별 기준 횟수·증빙·확인 방식은 [인증 항목]에서 바꿔요.</span>
       </Section>

@@ -15,6 +15,7 @@ import { programById } from "../../../shared/domain";
 import { PixelIcon } from "../../components/Pixel";
 import { askConfirm, askText, notice } from "../../components/Modal";
 import { useSession } from "../../lib/auth";
+import { deleteStudentFlow } from "../../lib/students";
 
 function download(name: string, text: string, type = "text/csv;charset=utf-8") {
   const url = URL.createObjectURL(new Blob([text], { type }));
@@ -80,14 +81,14 @@ function StaffManager() {
       {rows === null && <div className="muted">불러오는 중…</div>}
       {rows?.length === 0 && <Empty>가입한 교사가 없어요.</Empty>}
       <div className="table-wrap">
-        <table className="table">
+        <table className="table stack-sm">
           <thead><tr><th>이름</th><th>담당</th><th>이메일</th><th>상태</th><th>권한</th><th></th></tr></thead>
           <tbody>
             {list.map((s) => (
               <tr key={s.id}>
                 <td><b>{s.name}</b></td>
-                <td>{label(s)}</td>
-                <td className="small">{s.email}</td>
+                <td data-label="담당">{label(s)}</td>
+                <td className="small" data-label="이메일">{s.email}</td>
                 <td>{s.status === "active" ? <span className="chip ok">승인</span> : s.status === "pending" ? <span className="chip warn">대기</span> : <span className="chip red">반려</span>}</td>
                 <td>{s.role === "admin" ? <span className="chip">학교 담당자</span> : "교사"}{s.requestedAdmin && s.role !== "admin" ? <span className="chip warn">담당자 신청</span> : null}</td>
                 <td>
@@ -200,20 +201,21 @@ function ClassRoster() {
         <span className="small muted">{rows?.length ?? 0}명</span>
       </div>
       <div className="table-wrap">
-        <table className="table">
+        <table className="table stack-sm">
           <thead><tr><th>번호</th><th>이름</th><th>이메일</th><th>접속</th><th>상태</th><th></th></tr></thead>
           <tbody>
             {(rows ?? []).map((s) => (
               <tr key={s.id} style={s.active === false ? { opacity: 0.5 } : undefined}>
                 <td className="num">{s.number}</td>
                 <td><b>{s.name || <span className="muted">(이름 입력 전)</span>}</b> {s.isDemo && <span className="chip demo">예시</span>}</td>
-                <td className="small">{s.email || "(계정 없음)"}</td>
-                <td>{s.hasAccount ? <PixelIcon name="check" size={16} /> : "-"}</td>
-                <td>{s.active === false ? "비활성" : "활성"}</td>
+                <td className="small" data-label="이메일">{s.email || "(계정 없음)"}</td>
+                <td data-label="접속">{s.hasAccount ? <PixelIcon name="check" size={16} /> : "-"}</td>
+                <td data-label="상태">{s.active === false ? "비활성" : "활성"}</td>
                 <td>
                   <div className="row" style={{ gap: 6, flexWrap: "nowrap" }}>
                     <button className="btn ghost sm" onClick={async () => { const n = await askText({ title: "학생 이름 고치기", label: `${s.grade}학년 ${s.classNo}반 ${s.number}번`, initial: s.name, placeholder: "예: 홍길동", maxLength: 20 }); if (n && n !== s.name) patch(s.id, { name: n }); }}>이름</button>
                     <button className="btn ghost sm" onClick={() => patch(s.id, { active: s.active === false })}>{s.active === false ? "활성화" : "비활성"}</button>
+                    <button className="btn ghost sm danger-text" onClick={() => deleteStudentFlow(schoolId, s)}>삭제</button>
                   </div>
                 </td>
               </tr>

@@ -1,3 +1,4 @@
+import { PixelIcon } from "../../components/Pixel";
 import { Navigate, Route, Routes } from "react-router-dom";
 import { Layout, type Tab } from "../../components/Layout";
 import type { StaffDoc } from "../../lib/types";
@@ -36,7 +37,7 @@ export function StaffApp({ staff, isSuper, onSuper }: { staff: StaffDoc; isSuper
   const roles = [isAdmin && "학교 담당자", staff.homeroom && `${staff.grade}-${staff.classNo} 담임`, staff.subject && "전담"].filter(Boolean).join(" · ");
   return (
     <ScopeProvider staff={staff}>
-      <Layout who={`${staff.name} 선생님 · ${roles || "교사"}`} tabs={tabs} extra={isSuper ? <button onClick={onSuper}>시스템</button> : undefined}>
+      <Layout who={`${staff.name} 선생님 · ${roles || "교사"}`} tabs={tabs} extra={isSuper ? <button onClick={onSuper} aria-label="시스템" title="시스템"><PixelIcon name="gear" size={16} /><span className="hdr-lbl"> 시스템</span></button> : undefined}>
         <Routes>
           <Route path="/" element={<Overview />} />
           <Route path="/review" element={<Review />} />

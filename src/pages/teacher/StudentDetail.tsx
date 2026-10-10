@@ -19,9 +19,12 @@ import { useScope } from "./scope";
 import { useSession } from "../../lib/auth";
 import { doc as fsDoc, serverTimestamp, updateDoc } from "firebase/firestore";
 import { askText } from "../../components/Modal";
+import { deleteStudentFlow } from "../../lib/students";
+import { useNavigate } from "react-router-dom";
 
 export function StudentDetail() {
   const { sid = "" } = useParams();
+  const nav = useNavigate();
   const schoolId = useSchoolId();
   const config = useConfig();
   const { scope } = useScope();
@@ -72,7 +75,7 @@ export function StudentDetail() {
   return (
     <div className="page">
       <Lightbox url={zoom} onClose={() => setZoom(null)} />
-      <PageHeader back="/" title={`${student.grade}-${student.classNo} ${student.number}번 ${student.name || "(이름 입력 전)"}`} right={<><span className="small muted">{student.email || "계정 없음"}</span>{canRename && <button className="btn ghost sm" onClick={rename}>이름 고치기</button>}</>} />
+      <PageHeader back="/" title={`${student.grade}-${student.classNo} ${student.number}번 ${student.name || "(이름 입력 전)"}`} right={<><span className="small muted">{student.email || "계정 없음"}</span>{canRename && <button className="btn ghost sm" onClick={rename}>이름 고치기</button>}{canRename && <button className="btn ghost sm danger-text" onClick={async () => { if (await deleteStudentFlow(schoolId, { ...student, sid })) nav("/"); }}>학생 삭제</button>}</>} />
       <div className="grid grid-3">
         {activePrograms(config, student.grade).map((x) => <ProgramCard key={x.id} program={x} progress={p[x.id] ?? { count: 0, medal: "none", thresholds: thresholdsFor(config, x, student.grade)! }} />)}
       </div>

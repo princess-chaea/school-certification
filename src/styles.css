@@ -45,6 +45,10 @@
   color: var(--ink);
   background: var(--bg);
   -webkit-text-size-adjust: 100%;
+  color-scheme: only light; /* 브라우저 강제 다크모드 끄기 */
+  /* 한글은 낱말 단위로 줄바꿈 ("로그아/웃"처럼 글자 중간에서 끊기지 않게) */
+  word-break: keep-all;
+  overflow-wrap: anywhere;
 }
 
 * { box-sizing: border-box; }
@@ -62,12 +66,13 @@ a { color: var(--navy); }
   box-shadow: 0 2px 8px rgba(0,0,0,.12);
 }
 .app-header img { width: 34px; height: 34px; background: #fff; border-radius: 50%; padding: 2px; }
-.app-header .title { font-family: var(--font-title); font-weight: 700; font-size: 1.2rem; line-height: 1.1; }
+.app-header .title { font-family: var(--font-title); font-weight: 700; font-size: 1.2rem; line-height: 1.1; min-width: 0; }
 .app-header .title small { font-family: var(--font-body); }
 .app-header .title small { display: block; font-weight: 500; font-size: .72rem; opacity: .8; }
 .app-header .spacer { flex: 1; }
 .app-header .who { font-size: .85rem; opacity: .9; text-align: right; }
-.app-header button { background: rgba(255,255,255,.15); border: 0; color: #fff; border-radius: 10px; padding: 6px 10px; cursor: pointer; }
+.app-header button { background: rgba(255,255,255,.15); border: 0; color: #fff; border-radius: 10px; padding: 6px 10px; cursor: pointer; flex: none; white-space: nowrap; }
+.app-header img, .app-header .logo-fallback { flex: none; }
 
 .nav-tabs { display: flex; gap: 2px; overflow-x: auto; padding: 6px 16px 0; background: var(--card); border-bottom: 1px solid var(--line); position: sticky; top: 54px; z-index: 15; }
 .nav-tabs a, .nav-tabs button { display: inline-flex; align-items: center; gap: 6px; white-space: nowrap; padding: 10px 14px; text-decoration: none; color: var(--ink-2); font-weight: 700; border: 0; border-bottom: 3px solid transparent; background: none; cursor: pointer; }

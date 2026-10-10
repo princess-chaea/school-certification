@@ -113,7 +113,7 @@ export function ProgramsAdmin() {
       </p>
       <div className="quest-list">
         {programs.map((p, i) => (
-          <div key={p.id} className={`card px-card quest-item ${p.enabled ? "" : "disabled-item"}`} style={{ cursor: "default" }}>
+          <div key={p.id} className={`card px-card quest-item program-admin-row ${p.enabled ? "" : "disabled-item"}`} style={{ cursor: "default" }}>
             <span className="icon-box"><PixelIcon name={p.icon} size={36} /></span>
             <span style={{ flex: 1, minWidth: 0 }}>
               <b>{p.name} {!p.enabled && <span className="chip gray">숨김</span>}</b>
@@ -121,7 +121,7 @@ export function ProgramsAdmin() {
                 {p.area} · {p.grades.length === 6 ? "전 학년" : `${p.grades.join("·")}학년`} · {p.kind === "tasks" ? `과제 ${p.tasks?.length ?? 0}개 중 ${p.tierTasks?.bronze ?? 1}개 = 인증` : `${p.evidence.map((e) => EVIDENCE_LABEL[e]).join("·")} · 인증 ${Object.values(p.targetByGrade)[0] ?? "-"}${p.unit}~`} · {p.approval === "teacher" ? "교사 승인" : "자동 인정"}
               </span>
             </span>
-            <div className="row" style={{ gap: 4 }}>
+            <div className="row row-actions" style={{ gap: 4 }}>
               <button className="btn ghost sm" onClick={() => move(i, -1)} aria-label="위로">▲</button>
               <button className="btn ghost sm" onClick={() => move(i, 1)} aria-label="아래로">▼</button>
               <button className="btn ghost sm" onClick={() => change(programs.map((x) => (x.id === p.id ? { ...x, enabled: !x.enabled } : x)))}>{p.enabled ? "숨기기" : "보이기"}</button>

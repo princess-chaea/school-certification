@@ -1,0 +1,35 @@
+rules_version = '2';
+
+// 학생 업로드: uploads/{sid}/... (사진·녹음), 본인만 쓰기, 교사·관리자 읽기
+service firebase.storage {
+  match /b/{bucket}/o {
+    function signedIn() { return request.auth != null; }
+    function isStudentSid(sid) {
+      return signedIn()
+        && request.auth.token.email_verified == true
+        && request.auth.token.email.lower() == sid + '@haju.es.kr';
+    }
+    function isStaff() {
+      return signedIn()
+        && firestore.exists(/databases/(default)/documents/users/$(request.auth.uid))
+        && firestore.get(/databases/(default)/documents/users/$(request.auth.uid)).data.status == 'active';
+    }
+    function isAdmin() {
+      return isStaff() && firestore.get(/databases/(default)/documents/users/$(request.auth.uid)).data.role == 'admin';
+    }
+
+    match /uploads/{sid}/{allPaths=**} {
+      allow read: if isStudentSid(sid) || isStaff();
+      allow create, update: if isStudentSid(sid)
+        && request.resource.size < 12 * 1024 * 1024
+        && (request.resource.contentType.matches('image/.*') || request.resource.contentType.matches('audio/.*'));
+      allow delete: if isAdmin();
+    }
+
+    // 인증서 배경 이미지 등 공용 자산
+    match /assets/{allPaths=**} {
+      allow read: if signedIn();
+      allow write: if isAdmin();
+    }
+  }
+}

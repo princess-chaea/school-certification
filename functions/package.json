@@ -1,0 +1,23 @@
+{
+  "name": "haju-certification-functions",
+  "private": true,
+  "type": "module",
+  "main": "lib/index.js",
+  "engines": {
+    "node": "22"
+  },
+  "scripts": {
+    "sync-shared": "node -e \"const fs=require('fs');fs.mkdirSync('src/shared',{recursive:true});for(const f of ['domain.ts','typing.ts'])fs.copyFileSync('../shared/'+f,'src/shared/'+f);fs.mkdirSync('src/shared/data',{recursive:true});for(const f of fs.readdirSync('../data/english'))fs.copyFileSync('../data/english/'+f,'src/shared/data/'+f)\"",
+    "build": "npm run sync-shared && tsc",
+    "serve": "npm run build && firebase emulators:start --only functions"
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "^0.133.0",
+    "firebase-admin": "^13.5.0",
+    "firebase-functions": "^6.6.0",
+    "zod": "^4.1.0"
+  },
+  "devDependencies": {
+    "typescript": "~5.9.0"
+  }
+}

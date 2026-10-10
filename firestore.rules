@@ -1,0 +1,152 @@
+rules_version = '2';
+
+// 하주 학교장 인증제 Firestore 보안 규칙
+// - 학생: @haju.es.kr 계정, 문서 ID(sid) = 이메일 앞 6자리 (예: 263101)
+// - 교사·관리자: users/{uid} 문서, 관리자 승인(status == 'active') 후 사용
+//   teacherType 'homeroom' = 담임(grade, classNo) / 'subject' = 전담·업무 담당(grades[], programs[])
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function signedIn() { return request.auth != null; }
+    function authEmail() { return request.auth.token.email; }
+    function isStudent() {
+      return signedIn()
+        && request.auth.token.email_verified == true
+        && authEmail().lower().matches('^[0-9]{6}@haju[.]es[.]kr$');
+    }
+    function mySid() { return authEmail().lower().split('@')[0]; }
+    function isSelfStudent(sid) { return isStudent() && mySid() == sid; }
+
+    function staffDoc() { return get(/databases/$(database)/documents/users/$(request.auth.uid)).data; }
+    function isStaff() {
+      return signedIn()
+        && exists(/databases/$(database)/documents/users/$(request.auth.uid))
+        && staffDoc().status == 'active';
+    }
+    function isAdmin() { return isStaff() && staffDoc().role == 'admin'; }
+    function isHomeroomOf(g, c) {
+      let u = staffDoc();
+      return u.teacherType == 'homeroom' && u.grade == g && u.classNo == c;
+    }
+    function isSubjectFor(g, program) {
+      let u = staffDoc();
+      return u.teacherType == 'subject' && g in u.grades && program in u.programs;
+    }
+    // 학급 명단·현황을 볼 수 있는가 (담임: 자기 반 / 전담: 담당 학년)
+    function canSeeClass(g, c) {
+      return isAdmin() || (isStaff() && (isHomeroomOf(g, c) || (staffDoc().teacherType == 'subject' && g in staffDoc().grades)));
+    }
+    // 해당 분야 기록을 보고 삭제·확인할 수 있는가
+    function canManage(g, c, program) {
+      return isAdmin() || (isStaff() && (isHomeroomOf(g, c) || isSubjectFor(g, program)));
+    }
+    function onlyChanges(keys) {
+      return request.resource.data.diff(resource.data).affectedKeys().hasOnly(keys);
+    }
+
+    // ── 설정 ───────────────────────────────────────────
+    match /config/{docId} {
+      allow read: if signedIn();
+      allow write: if isAdmin();
+    }
+    match /sentenceSets/{setId} {
+      allow read: if signedIn();
+      allow write: if isAdmin();
+    }
+
+    // ── 교사·관리자 ─────────────────────────────────────
+    match /users/{uid} {
+      allow read: if (signedIn() && request.auth.uid == uid) || isAdmin();
+      // 본인 가입 신청: 항상 teacher / pending 으로만 생성 가능
+      allow create: if signedIn() && request.auth.uid == uid && !isStudent()
+        && request.resource.data.role == 'teacher'
+        && request.resource.data.status == 'pending'
+        && request.resource.data.email == authEmail()
+        && request.resource.data.teacherType in ['homeroom', 'subject'];
+      // 승인 대기 중에는 본인이 소속 정보만 수정 가능
+      allow update: if isAdmin()
+        || (signedIn() && request.auth.uid == uid && resource.data.status == 'pending'
+            && onlyChanges(['name', 'teacherType', 'grade', 'classNo', 'grades', 'programs', 'updatedAt']));
+      allow delete: if isAdmin();
+    }
+
+    // ── 학생 ───────────────────────────────────────────
+    match /students/{sid} {
+      allow get: if isSelfStudent(sid) || canSeeClass(resource.data.grade, resource.data.classNo);
+      allow list: if isAdmin() || (isStaff() && canSeeClass(resource.data.grade, resource.data.classNo));
+      // 학생 본인은 이름·접속 시각만 수정 (진행률은 Cloud Functions가 기록)
+      allow update: if (isSelfStudent(sid) && onlyChanges(['name', 'lastLoginAt', 'hasAccount']))
+        || (isStaff() && (isAdmin() || isHomeroomOf(resource.data.grade, resource.data.classNo))
+            && onlyChanges(['name', 'active', 'note', 'updatedAt']));
+      // 계정 없는 학생(1~2학년 등)은 담임·관리자가 직접 등록
+      allow create: if isAdmin()
+        || (isStaff() && isHomeroomOf(request.resource.data.grade, request.resource.data.classNo)
+            && request.resource.data.hasAccount == false);
+      allow delete: if isAdmin();
+    }
+
+    // ── 활동 제출 기록 ──────────────────────────────────
+    match /submissions/{id} {
+      allow get: if (isStudent() && resource.data.sid == mySid())
+        || canManage(resource.data.grade, resource.data.classNo, resource.data.program);
+      allow list: if (isStudent() && resource.data.sid == mySid())
+        || canManage(resource.data.grade, resource.data.classNo, resource.data.program);
+
+      // 학생 제출: 본인 학년·반과 일치해야 하며 1건씩
+      allow create: if isStudent()
+        && request.resource.data.sid == mySid()
+        && request.resource.data.source == 'student'
+        && request.resource.data.status == 'active'
+        && request.resource.data.count == 1
+        && request.resource.data.program in ['reading', 'carbon', 'english']
+        && request.resource.data.grade == get(/databases/$(database)/documents/students/$(mySid())).data.grade
+        && request.resource.data.classNo == get(/databases/$(database)/documents/students/$(mySid())).data.classNo
+        && !('ai' in request.resource.data);
+
+      // 교사 일괄 체크(태블릿 없는 학생 관찰 기록)
+      allow create: if isStaff()
+        && request.resource.data.source == 'teacher'
+        && request.resource.data.status == 'active'
+        && request.resource.data.count is int && request.resource.data.count >= 1 && request.resource.data.count <= 100
+        && canManage(request.resource.data.grade, request.resource.data.classNo, request.resource.data.program);
+
+      // 교사: 비정상 기록 삭제(휴지통)·복구·확인 표시
+      allow update: if canManage(resource.data.grade, resource.data.classNo, resource.data.program)
+        && onlyChanges(['status', 'deletedBy', 'deletedAt', 'deleteReason', 'reviewedBy', 'reviewedAt', 'teacherComment']);
+      allow delete: if isAdmin();
+    }
+
+    // ── 영어 문장 연습 (과제 1·3) ───────────────────────
+    match /englishItems/{id} {
+      allow get, list: if (isStudent() && resource.data.sid == mySid())
+        || canManage(resource.data.grade, resource.data.classNo, 'english');
+
+      allow create: if isStudent()
+        && request.resource.data.sid == mySid()
+        && id == mySid() + '_' + request.resource.data.setId + '_' + string(request.resource.data.no)
+        && request.resource.data.status in ['practicing', 'ready', 'requested']
+        && !('checkedBy' in request.resource.data);
+
+      // 학생: 확인 완료 전까지 연습 기록·검사 요청만 가능
+      allow update: if (isStudent() && resource.data.sid == mySid()
+          && resource.data.status != 'checked'
+          && request.resource.data.status in ['practicing', 'ready', 'requested']
+          && onlyChanges(['rounds', 'status', 'custom', 'requestedAt', 'updatedAt']))
+        // 교사: 통과(checked) 또는 다시(retry)
+        || (canManage(resource.data.grade, resource.data.classNo, 'english')
+          && request.resource.data.status in ['checked', 'retry', 'requested']
+          && onlyChanges(['status', 'checkedBy', 'checkedByName', 'checkedAt', 'teacherNote', 'updatedAt']));
+      allow delete: if isAdmin();
+    }
+
+    // ── 집계·AI 사용량 (Cloud Functions 전용, 교사 읽기) ──
+    match /stats/{docId} {
+      allow read: if isStaff();
+      allow write: if false;
+    }
+    match /aiUsage/{docId} {
+      allow read: if isAdmin();
+      allow write: if false;
+    }
+  }
+}

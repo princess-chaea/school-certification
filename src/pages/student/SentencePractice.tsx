@@ -1,0 +1,324 @@
+import { useEffect, useMemo, useState } from "react";
+import { Link, useNavigate } from "react-router-dom";
+import { doc, serverTimestamp, setDoc, updateDoc } from "firebase/firestore";
+import { httpsCallable } from "firebase/functions";
+import { db, functions } from "../../firebase";
+import { useMyEnglishItems, useSentenceSet } from "../../lib/data";
+import { completedRounds, itemId, ROUNDS_REQUIRED, statusLabel, targetOf } from "../../lib/english";
+import { uploadBlob } from "../../lib/media";
+import { useRecorder } from "../../lib/useRecorder";
+import { playCorrect, playWrong } from "../../lib/sound";
+import { recognizeOnce, speak, speechRecognitionSupported } from "../../lib/speech";
+import { diffWords, firstLetterHint, isCorrectAnswer, speechMatchRatio } from "../../../shared/typing";
+import { fmtSec } from "../../lib/format";
+import type { EnglishItem, EnglishRound, StudentDoc } from "../../lib/types";
+import { Stamp, toast } from "../../components/ui";
+import { useDingOnCheck } from "./EnglishRoom";
+
+type Step = "type" | "record" | "saved";
+
+export function SentencePractice({ student, setId, no }: { student: StudentDoc; setId: string; no: number }) {
+  const nav = useNavigate();
+  const set = useSentenceSet(setId);
+  const { rows: items } = useMyEnglishItems(student.sid);
+  const ding = useDingOnCheck(items);
+  const s = set?.items.find((x) => x.no === no);
+  const item = useMemo(() => items?.find((i) => i.setId === setId && i.no === no), [items, setId, no]);
+  const id = itemId(student.sid, setId, no);
+  const task = setId.startsWith("task3") ? "t3" : "t1";
+
+  const [step, setStep] = useState<Step>("type");
+  const [typed, setTyped] = useState("");
+  const [attempts, setAttempts] = useState<string[]>([]);
+  const [wrong, setWrong] = useState(false);
+  const [showHint, setShowHint] = useState(false);
+  const [aiText, setAiText] = useState<string | null>(null);
+  const [aiBusy, setAiBusy] = useState(false);
+  const [stt, setStt] = useState<{ text: string; ratio: number } | null>(null);
+  const [saving, setSaving] = useState(false);
+  const rec = useRecorder(30_000);
+
+  // 문장이 바뀌면 처음부터
+  useEffect(() => {
+    setStep("type");
+    setTyped("");
+    setAttempts([]);
+    setWrong(false);
+    setShowHint(false);
+    setAiText(null);
+    setStt(null);
+    rec.reset();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [setId, no]);
+
+  if (!set || !s || items === null) return <div className="page">불러오는 중…</div>;
+  const target = targetOf(s, item);
+  const rounds = completedRounds(item);
+  const status = item?.status ?? "new";
+  const prevNo = set.items.find((x) => x.no === no - 1)?.no;
+  const nextNo = set.items.find((x) => x.no === no + 1)?.no;
+  const locked = status === "checked" || status === "requested";
+
+  if (s.type === "student" && !item?.custom?.en) {
+    return <CustomSentenceForm student={student} setId={setId} no={no} unit={s.unit ?? 0} task={task} prompt={s.prompt} />;
+  }
+
+  function check() {
+    if (!typed.trim()) return;
+    const tries = [...attempts, typed];
+    setAttempts(tries);
+    if (isCorrectAnswer(typed, target.en, target.alternatives)) {
+      playCorrect();
+      setWrong(false);
+      setStep("record");
+      speak(target.en);
+    } else {
+      playWrong();
+      setWrong(true);
+    }
+  }
+
+  async function explain() {
+    setAiBusy(true);
+    try {
+      const res = await httpsCallable<unknown, { text: string }>(functions, "explainTyping")({ ko: target.ko, answer: target.en, attempts });
+      setAiText(res.data.text);
+    } catch (e) {
+      setAiText((e as Error).message || "지금은 AI 설명을 쓸 수 없어요.");
+    } finally {
+      setAiBusy(false);
+    }
+  }
+
+  async function checkPronunciation() {
+    try {
+      toast("🎧 문장을 말해 보세요…");
+      const text = await recognizeOnce();
+      setStt({ text, ratio: speechMatchRatio(text, target.en) });
+    } catch (e) {
+      toast((e as Error).message);
+    }
+  }
+
+  async function saveRound() {
+    if (!rec.recording) return;
+    setSaving(true);
+    try {
+      const ext = rec.recording.mime.includes("mp4") ? "m4a" : rec.recording.mime.includes("ogg") ? "ogg" : "webm";
+      // 문장마다 최신 녹음 1개만 보관 (덮어쓰기)
+      const path = `uploads/${student.sid}/english/${setId}-${no}.${ext}`;
+      await uploadBlob(path, rec.recording.blob, rec.recording.mime);
+      const round: EnglishRound = {
+        typedOk: true,
+        attempts: attempts.length,
+        audioPath: path,
+        durationMs: rec.recording.durationMs,
+        at: Date.now(),
+        ...(stt ? { sttText: stt.text } : {}),
+      };
+      const nextRounds = [...(item?.rounds ?? []), round];
+      const done = nextRounds.filter((r) => r.typedOk && r.audioPath).length;
+      const nextStatus: EnglishItem["status"] = status === "retry" || done >= ROUNDS_REQUIRED ? "ready" : "practicing";
+      if (item) {
+        await updateDoc(doc(db, "englishItems", id), { rounds: nextRounds, status: nextStatus, updatedAt: serverTimestamp() });
+      } else {
+        await setDoc(doc(db, "englishItems", id), {
+          sid: student.sid, grade: student.grade, classNo: student.classNo, setId, task, no,
+          rounds: nextRounds, status: nextStatus, updatedAt: serverTimestamp(),
+        });
+      }
+      setStep("saved");
+    } catch (e) {
+      toast("저장하지 못했어요: " + (e as Error).message);
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function requestCheck() {
+    await updateDoc(doc(db, "englishItems", id), { status: "requested", requestedAt: serverTimestamp(), updatedAt: serverTimestamp() });
+    toast("검사 요청 완료! 선생님께 말해 주세요 🙋");
+  }
+
+  function again() {
+    setStep("type");
+    setTyped("");
+    setAttempts([]);
+    setWrong(false);
+    setShowHint(false);
+    setAiText(null);
+    setStt(null);
+    rec.reset();
+  }
+
+  return (
+    <div className="page narrow">
+      {ding.stamp && <Stamp title="띵동!" sub={ding.stamp} onDone={ding.clear} />}
+      <div className="row between">
+        <Link to={`/english/set/${setId}`} className="small">← 문장 목록</Link>
+        <div className="row small">
+          {prevNo && <Link to={`/english/set/${setId}/${prevNo}`}>◀ 이전</Link>}
+          <b>#{no}</b>
+          {nextNo && <Link to={`/english/set/${setId}/${nextNo}`}>다음 ▶</Link>}
+        </div>
+      </div>
+
+      <div className="card stack" style={{ marginTop: 10 }}>
+        <div className="row between">
+          <span className="chip">{statusLabel(status)}</span>
+          <div className="row small">
+            <span>연습 {Math.min(rounds, ROUNDS_REQUIRED)} / {ROUNDS_REQUIRED}회</span>
+            <div className="dots">{Array.from({ length: ROUNDS_REQUIRED }, (_, i) => <i key={i} className={i < rounds ? "on" : ""} />)}</div>
+          </div>
+        </div>
+        {item?.teacherNote && status === "retry" && <div className="chip red">선생님: {item.teacherNote}</div>}
+
+        <div className="practice-ko">{target.ko || "(뜻 없음)"}</div>
+
+        {status === "checked" ? (
+          <div className="stack" style={{ alignItems: "center" }}>
+            <div className="answer-reveal">{target.en}</div>
+            <div className="chip ok">✅ {item?.checkedByName ?? "선생님"} 확인 완료</div>
+            <button className="btn secondary" onClick={() => speak(target.en)}>🔊 다시 듣기</button>
+          </div>
+        ) : status === "requested" ? (
+          <div className="stack" style={{ alignItems: "center" }}>
+            <div className="answer-reveal">{target.en}</div>
+            <div className="chip warn">⏳ 선생님 검사를 기다리는 중이에요. 선생님 앞에서 말해 보세요!</div>
+            <button className="btn secondary" onClick={() => speak(target.en)}>🔊 듣기</button>
+          </div>
+        ) : step === "type" ? (
+          <>
+            <div className="small muted" style={{ textAlign: "center" }}>① 위 뜻을 영어 문장으로 써 보세요</div>
+            <input
+              className="input type-input"
+              value={typed}
+              autoFocus
+              autoComplete="off"
+              autoCorrect="off"
+              autoCapitalize="off"
+              spellCheck={false}
+              onPaste={(e) => e.preventDefault()}
+              onDrop={(e) => e.preventDefault()}
+              onChange={(e) => { setTyped(e.target.value); setWrong(false); }}
+              onKeyDown={(e) => e.key === "Enter" && check()}
+              placeholder="영어로 입력"
+              aria-label="영어 문장 입력"
+            />
+            {wrong && (
+              <div className="stack" style={{ alignItems: "center" }}>
+                <div className="diff">
+                  {diffWords(typed, target.en).map((t, i) => (
+                    <span key={i} className={t.kind}>{t.kind === "missing" ? "＿".repeat(Math.max(2, Math.ceil(t.word.length / 2))) : t.word}</span>
+                  ))}
+                </div>
+                <div className="tiny">초록: 맞은 단어 · 밑줄: 빠진 단어 · 빨강: 고쳐야 할 단어</div>
+              </div>
+            )}
+            {showHint && <div className="answer-reveal" style={{ fontSize: "1.1rem", letterSpacing: ".05em" }}>힌트: {firstLetterHint(target.en)}</div>}
+            {aiText && <div className="card flat small" style={{ background: "var(--navy-50)" }}>🤖 {aiText}</div>}
+            <div className="row" style={{ justifyContent: "center" }}>
+              <button className="btn big" onClick={check} disabled={!typed.trim()}>확인</button>
+              {attempts.length >= 2 && !showHint && <button className="btn secondary" onClick={() => setShowHint(true)}>💡 힌트</button>}
+              {attempts.length >= 3 && !aiText && <button className="btn secondary" disabled={aiBusy} onClick={explain}>{aiBusy ? "생각 중…" : "🤖 왜 틀렸을까?"}</button>}
+            </div>
+          </>
+        ) : step === "record" ? (
+          <div className="stack" style={{ alignItems: "center" }}>
+            <div className="answer-reveal">⭕ {target.en}</div>
+            <button className="btn secondary" onClick={() => speak(target.en)}>🔊 원어민 발음 듣기</button>
+            <div className="small muted">② 🎙️ 버튼을 누르고 문장을 소리 내어 말한 뒤 ⏹ 를 눌러요</div>
+            <button className={`rec-btn ${rec.state === "recording" ? "on" : ""}`} onClick={() => (rec.state === "recording" ? rec.stop() : rec.start())} aria-label="녹음">
+              {rec.state === "recording" ? "⏹" : "🎙️"}
+            </button>
+            <div className="small">{rec.state === "recording" ? `녹음 중 ${fmtSec(rec.elapsed)}` : rec.recording ? `${fmtSec(rec.recording.durationMs)} 녹음됨` : ""}</div>
+            {rec.error && <div className="chip red">{rec.error}</div>}
+            {rec.recording && rec.state === "done" && (
+              <>
+                <audio controls src={rec.recording.url} />
+                {rec.recording.durationMs < 1000 && <div className="chip warn">너무 짧아요. 다시 녹음해 주세요.</div>}
+                {speechRecognitionSupported() && (
+                  <button className="btn ghost sm" onClick={checkPronunciation}>🎧 발음 스스로 점검 (선택)</button>
+                )}
+                {stt && (
+                  <div className="small" style={{ textAlign: "center" }}>
+                    들린 문장: “{stt.text || "(못 알아들음)"}” · 일치 {Math.round(stt.ratio * 100)}%
+                    {stt.ratio >= 0.8 ? " 👍" : " — 천천히 또박또박 다시 해 볼까?"}
+                  </div>
+                )}
+                <div className="row">
+                  <button className="btn ghost" onClick={rec.reset}>다시 녹음</button>
+                  <button className="btn ok big" disabled={saving || rec.recording.durationMs < 1000} onClick={saveRound}>{saving ? "저장 중…" : `${rounds + 1}회차 완료!`}</button>
+                </div>
+              </>
+            )}
+          </div>
+        ) : (
+          <div className="stack" style={{ alignItems: "center" }}>
+            <div style={{ fontSize: "2.4rem" }}>🎉</div>
+            {status === "ready" ? (
+              <>
+                <b>{ROUNDS_REQUIRED}번 연습 완료! 이제 선생님께 검사를 받아요.</b>
+                <div className="row">
+                  <button className="btn big ok" onClick={requestCheck}>🙋 검사 요청하기</button>
+                  {nextNo && <button className="btn secondary" onClick={() => nav(`/english/set/${setId}/${nextNo}`)}>다음 문장 ▶</button>}
+                </div>
+              </>
+            ) : (
+              <>
+                <b>{rounds}회차 완료! {ROUNDS_REQUIRED - rounds}번 더 연습하면 검사받을 수 있어요.</b>
+                <div className="row">
+                  <button className="btn big" onClick={again}>한 번 더 연습</button>
+                  {nextNo && <button className="btn secondary" onClick={() => nav(`/english/set/${setId}/${nextNo}`)}>다음 문장 ▶</button>}
+                </div>
+              </>
+            )}
+          </div>
+        )}
+        {!locked && status === "ready" && step === "type" && (
+          <button className="btn ok" onClick={requestCheck}>🙋 바로 검사 요청하기 (연습 {rounds}회 완료)</button>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function CustomSentenceForm({ student, setId, no, unit, task, prompt }: { student: StudentDoc; setId: string; no: number; unit: number; task: string; prompt?: string }) {
+  const [en, setEn] = useState("");
+  const [ko, setKo] = useState("");
+  const [busy, setBusy] = useState(false);
+  return (
+    <div className="page narrow">
+      <Link to={`/english/set/${setId}`} className="small">← 문장 목록</Link>
+      <h1>✏️ #{no} 나만의 {unit}단원 표현</h1>
+      <p className="muted small">{prompt ?? `${unit}단원에서 배운 표현을 골라 적어 보세요.`} 선생님이 검사할 때 확인해 주세요.</p>
+      <div className="card stack">
+        <label className="field"><span>영어 문장</span>
+          <input className="input" value={en} onChange={(e) => setEn(e.target.value)} autoCapitalize="off" autoCorrect="off" spellCheck={false} placeholder="예) I like soccer." />
+        </label>
+        <label className="field"><span>우리말 뜻</span>
+          <input className="input" value={ko} onChange={(e) => setKo(e.target.value)} placeholder="예) 나는 축구를 좋아해." />
+        </label>
+        <button
+          className="btn big"
+          disabled={busy || en.trim().split(/\s+/).length < 2 || !ko.trim()}
+          onClick={async () => {
+            setBusy(true);
+            try {
+              await setDoc(doc(db, "englishItems", itemId(student.sid, setId, no)), {
+                sid: student.sid, grade: student.grade, classNo: student.classNo, setId, task, no,
+                custom: { en: en.trim(), ko: ko.trim() }, rounds: [], status: "practicing", updatedAt: serverTimestamp(),
+              });
+            } catch (e) {
+              toast("저장하지 못했어요: " + (e as Error).message);
+            } finally {
+              setBusy(false);
+            }
+          }}
+        >
+          이 문장으로 연습 시작
+        </button>
+      </div>
+    </div>
+  );
+}

@@ -30,9 +30,9 @@ export function LogoutButton({ className = "btn ghost sm", label = "로그아웃
       {open && (
         <Modal title="로그아웃" icon="hand" onClose={() => setOpen(false)}>
           <p style={{ margin: 0 }}>로그아웃할까요?</p>
-          <div className="row" style={{ justifyContent: "flex-end", marginTop: 14 }}>
-            <button className="btn ghost" onClick={() => setOpen(false)}>취소</button>
+          <div className="modal-actions">
             <button className="btn" autoFocus onClick={() => logout()}>로그아웃</button>
+            <button className="btn ghost" onClick={() => setOpen(false)}>취소</button>
           </div>
         </Modal>
       )}
@@ -90,10 +90,10 @@ export function DialogHost() {
             onChange={(e) => setText(e.target.value)} onKeyDown={(e) => e.key === "Enter" && text.trim() && close(text.trim())} />
         </label>
       )}
-      <div className="row" style={{ justifyContent: "flex-end", marginTop: 14 }}>
-        {!(d.kind === "confirm" && d.notice) && <button className="btn ghost" onClick={() => close(d.kind === "confirm" ? false : null)}>취소</button>}
+      <div className="modal-actions">
         <button className={`btn ${d.kind === "confirm" && d.danger ? "danger" : ""}`} autoFocus={d.kind === "confirm"} disabled={d.kind === "text" && !text.trim()}
           onClick={() => close(d.kind === "confirm" ? true : text.trim())}>{d.ok}</button>
+        {!(d.kind === "confirm" && d.notice) && <button className="btn ghost" onClick={() => close(d.kind === "confirm" ? false : null)}>취소</button>}
       </div>
     </Modal>
   );

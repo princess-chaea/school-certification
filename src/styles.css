@@ -404,6 +404,8 @@ mark.hl { background: #fee761; color: inherit; padding: 0 1px; border-radius: 3p
 .icon-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(44px, 1fr)); gap: 6px; padding: 8px; border: 2px dashed var(--line); border-radius: 10px; }
 .icon-choice { display: grid; place-items: center; height: 44px; border: 2px solid transparent; border-radius: 8px; background: #fff; cursor: pointer; }
 .icon-choice.on, .icon-choice:hover { border-color: var(--navy); background: var(--navy-50); }
+/* 팝업 버튼: 하려는 동작(확인·삭제 등)은 왼쪽, 취소는 오른쪽 (모든 팝업 공통) */
+.modal-actions { display: flex; gap: 8px; justify-content: flex-end; flex-wrap: wrap; margin-top: 14px; }
 .icon-pick-btn { align-self: flex-start; padding: 8px 14px; border: 2px solid var(--line); border-radius: 999px; background: #fff; font: inherit; font-size: .9rem; cursor: pointer; }
 .icon-pick-btn:hover { border-color: var(--navy); background: var(--navy-50); }
 .icon-pick-btn.missing { border-color: var(--red); color: var(--red); font-weight: 700; }

@@ -7,6 +7,7 @@ export default defineConfig({
     react(),
     VitePWA({
       registerType: "autoUpdate",
+      injectRegister: false, // boot.tsx 에서 직접 등록 (앱을 열 때 새 버전이면 바로 새로고침)
       includeAssets: ["favicon.png", "logo.png"],
       manifest: {
         name: "학교장 인증제",

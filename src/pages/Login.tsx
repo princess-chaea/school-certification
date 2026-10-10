@@ -22,7 +22,7 @@ export function Login() {
 
   return (
     <div className="login">
-      <button className="signup-corner" onClick={() => go("teacher")} disabled={busy}><PixelIcon name="users" size={18} /> 교사 로그인</button>
+      <button className="signup-corner" onClick={() => go("teacher")} disabled={busy}><PixelIcon name="users" size={18} /> 회원가입(교사)</button>
       <div className="card stack" style={{ alignItems: "center" }}>
         <div className="login-mark" aria-hidden="true"><PixelMedal medal="gold" size={64} /></div>
         <h1 style={{ margin: "6px 0 0", fontSize: "2.1rem" }}>학교장 인증제</h1>
@@ -40,9 +40,9 @@ export function Login() {
           Google 계정으로 로그인
         </button>
         <div className="tiny" style={{ lineHeight: 1.6 }}>
-          학생: 학교에서 받은 구글 계정으로 로그인하면 우리 학교 페이지로 바로 들어가요.
+          학생·선생님 모두 이 버튼으로 로그인하면 우리 학교 페이지로 바로 들어가요.
           <br />
-          선생님: 오른쪽 위 [교사 로그인]으로 들어와요. 처음이면 학교와 역할(학교 담당자·담임·전담)을 골라요.
+          처음 오신 선생님은 오른쪽 위 [회원가입(교사)]에서 학교와 역할(학교 담당자·담임·전담)을 골라요.
         </div>
         {err && <div className="chip red">{err}</div>}
       </div>

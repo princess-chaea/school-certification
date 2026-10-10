@@ -145,9 +145,17 @@ describe("roster csv", () => {
     expect(r.rows.find((x) => x.name === "하나")?.number).toBe(2);
   });
   it("reports bad rows and duplicate emails", () => {
-    const r = parseRosterCsv("학년,반,이름,이메일\n7,1,가,a@x.kr\n3,1,,b@x.kr\n3,1,다,a@x.kr\n3,1,라,a@x.kr\n3,1,마,nope\n");
+    const r = parseRosterCsv("학년,반,이름,이메일\n7,1,가,a@x.kr\n3,1,,\n3,1,다,a@x.kr\n3,1,라,a@x.kr\n3,1,마,nope\n");
     expect(r.errors.length).toBe(4);
     expect(r.rows).toHaveLength(1);
+  });
+  it("name is optional for students with an account (they enter it at first login)", () => {
+    const r = parseRosterCsv("학년,반,번호,이름,이메일\n3,1,1,,b@x.kr\n3,1,2,가나,c@x.kr\n");
+    expect(r.errors).toEqual([]);
+    expect(r.rows[0]).toMatchObject({ name: "", email: "b@x.kr", number: 1 });
+    const noNameCol = parseRosterCsv("학년,반,이메일\n3,1,b@x.kr\n3,1,a@x.kr\n");
+    expect(noNameCol.errors).toEqual([]);
+    expect(noNameCol.rows.map((x) => [x.email, x.number])).toEqual([["b@x.kr", 2], ["a@x.kr", 1]]);
   });
   it("handles quotes, tabs, CRLF and BOM", () => {
     expect(parseCsv('﻿"a,b",c\r\nd\te\r\n')).toEqual([["a,b", "c"], ["d", "e"]]);

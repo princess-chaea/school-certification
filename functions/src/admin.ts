@@ -32,10 +32,11 @@ export const importRoster = onCall({ region: REGION, timeoutSeconds: 300 }, asyn
     const grade = Number(r.grade), classNo = Number(r.classNo), number = Number(r.number);
     const name = String(r.name ?? "").trim().slice(0, 30);
     const email = String(r.email ?? "").trim().toLowerCase();
-    if (!(grade >= 1 && grade <= 6) || !(classNo >= 1) || !name) continue;
+    // 이름은 선택(계정 있는 학생만): 비우면 학생이 첫 로그인 때 입력. 이미 있는 이름은 빈 값으로 덮어쓰지 않음
+    if (!(grade >= 1 && grade <= 6) || !(classNo >= 1) || (!name && !email)) continue;
     const sid = studentIdFor({ email, grade, classNo, number }, year);
     incoming.add(sid);
-    const data = { sid, email, grade, classNo, number, name, year, active: true, updatedAt: FieldValue.serverTimestamp() };
+    const data = { sid, email, grade, classNo, number, ...(name ? { name } : {}), year, active: true, updatedAt: FieldValue.serverTimestamp() };
     if (email) {
       batch.set(db.doc(`studentIndex/${email}`), { schoolId, sid, year });
       n++;
@@ -44,7 +45,7 @@ export const importRoster = onCall({ region: REGION, timeoutSeconds: 300 }, asyn
       batch.set(db.doc(sp(schoolId, `students/${sid}`)), data, { merge: true });
       updated++;
     } else {
-      batch.set(db.doc(sp(schoolId, `students/${sid}`)), { ...data, hasAccount: false, createdAt: FieldValue.serverTimestamp() });
+      batch.set(db.doc(sp(schoolId, `students/${sid}`)), { name: "", ...data, hasAccount: false, createdAt: FieldValue.serverTimestamp() });
       created++;
     }
     if (++n >= 450) await flush();

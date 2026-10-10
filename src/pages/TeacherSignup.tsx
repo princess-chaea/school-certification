@@ -103,7 +103,7 @@ export function TeacherSignup({ user, existing, isSuper, onSuper }: { user: User
         </div>
         <div className="row" style={{ justifyContent: "center" }}>
           <button className="btn" onClick={() => logout()}>다른 계정으로 로그인</button>
-          <button className="btn ghost" onClick={() => { setLoginIntent("teacher"); setAsTeacher(true); }}>교사예요</button>
+          <button className="btn ghost" onClick={() => { setLoginIntent("teacher"); setAsTeacher(true); }}>교사 회원가입</button>
         </div>
       </Centered>
     );

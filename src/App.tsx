@@ -12,6 +12,7 @@ import { Loading, ToastHost } from "./components/ui";
 import { StudentHome, ProgramList, ProgramPage, CertificateList } from "./pages/student/Programs";
 import { Records } from "./pages/student/Records";
 import { CertificatePage } from "./pages/student/CertificatePage";
+import { NameSetup } from "./pages/student/NameSetup";
 import { StaffApp } from "./pages/teacher/StaffApp";
 import type { StaffDoc, StudentDoc } from "./lib/types";
 import type { User } from "firebase/auth";
@@ -38,7 +39,7 @@ function Gate() {
       <SchoolProvider schoolId={schoolId}>
         <ConfigProvider schoolId={schoolId}>
           {s.kind === "student" ? (
-            s.student ? <StudentApp student={s.student} /> : <Loading label={s.error ? `학생 정보를 불러오지 못했어요: ${s.error}` : "학생 정보를 준비하는 중…"} />
+            s.student ? (s.student.name ? <StudentApp student={s.student} /> : <NameSetup student={s.student} />) :<Loading label={s.error ? `학생 정보를 불러오지 못했어요: ${s.error}` : "학생 정보를 준비하는 중…"} />
           ) : s.staff.status !== "active" ? (
             <PendingWithSchool staff={s.staff} user={s.user} />
           ) : (

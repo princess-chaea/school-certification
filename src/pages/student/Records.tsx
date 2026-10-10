@@ -1,7 +1,8 @@
 import { useState } from "react";
 import { useConfig } from "../../lib/config";
 import { PageHeader } from "../../components/Layout";
-import { useMySubmissions } from "../../lib/data";
+import { useMyEnglishItems, useMySubmissions } from "../../lib/data";
+import { EnglishGroupCard, englishGroups, recordTime } from "../../components/EnglishItemCard";
 import type { StudentDoc } from "../../lib/types";
 import { fmtDate } from "../../lib/format";
 import { StorageImage, StorageAudio, StorageLink, Lightbox, Empty } from "../../components/ui";
@@ -13,7 +14,14 @@ export function Records({ student }: { student: StudentDoc }) {
   const { rows } = useMySubmissions(student);
   const [filter, setFilter] = useState<string>("all");
   const [zoom, setZoom] = useState<string | null>(null);
+  const { rows: items } = useMyEnglishItems(student);
   const list = (rows ?? []).filter((r) => filter === "all" || r.program === filter);
+  const english = englishGroups(items).filter((g) => filter === "all" || g.program === filter);
+  // 올린 기록(사진·글·녹음 파일)과 영어 문장 녹음을 시간순으로 함께 보여 줌
+  const entries = [
+    ...list.map((r) => ({ at: recordTime(r.createdAt), sub: r, item: null })),
+    ...english.map((g) => ({ at: g.at, sub: null, item: g })),
+  ].sort((a, b) => b.at - a.at);
   return (
     <div className="page narrow">
       <Lightbox url={zoom} onClose={() => setZoom(null)} />
@@ -26,8 +34,10 @@ export function Records({ student }: { student: StudentDoc }) {
       </div>
       <div className="stack">
         {rows === null && <div className="muted">불러오는 중…</div>}
-        {rows && list.length === 0 && <Empty>아직 기록이 없어요.</Empty>}
-        {list.map((r) => {
+        {rows && entries.length === 0 && <Empty>아직 기록이 없어요.</Empty>}
+        {entries.map(({ sub: r, item }) => {
+          if (item) return <EnglishGroupCard key={item.key} group={item} config={config} />;
+          if (!r) return null;
           const def = programById(config, r.program);
           const task = def?.tasks?.find((t) => t.id === r.task);
           return (

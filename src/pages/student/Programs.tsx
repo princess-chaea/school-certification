@@ -1,6 +1,7 @@
 import { useNavigate, useParams } from "react-router-dom";
 import { useConfig } from "../../lib/config";
 import { useMySubmissions, useMyEnglishItems } from "../../lib/data";
+import { EnglishGroupCard, englishGroups, recordTime } from "../../components/EnglishItemCard";
 import type { StudentDoc } from "../../lib/types";
 import { activePrograms, programById, thresholdsFor, isCertified, MEDAL_LABEL } from "../../../shared/domain";
 import { ProgramCard } from "../../components/ProgramCard";
@@ -23,8 +24,11 @@ export function StudentHome({ student }: { student: StudentDoc }) {
   const programs = activePrograms(config, student.grade);
   const p = student.progress ?? {};
   const certified = programs.filter((x) => isCertified(p[x.id]?.medal));
-  const pending = (rows ?? []).filter((r) => r.status === "pending").length;
-  const recent = (rows ?? []).filter((r) => r.status !== "deleted").slice(0, 4);
+    const pending = (rows ?? []).filter((r) => r.status === "pending").length + (items ?? []).filter((i) => i.status === "requested").length;
+  const recent = [
+    ...(rows ?? []).filter((r) => r.status !== "deleted").map((r) => ({ at: recordTime(r.createdAt), sub: r, item: null })),
+    ...englishGroups(items).map((g) => ({ at: g.at, sub: null, item: g })),
+  ].sort((a, b) => b.at - a.at).slice(0, 4);
 
   return (
     <div className="page">
@@ -60,7 +64,9 @@ export function StudentHome({ student }: { student: StudentDoc }) {
       <div className="section-title">최근 기록</div>
       <div className="stack">
         {recent.length === 0 && <Empty icon="flag">아직 올린 기록이 없어요. [인증하기]에서 첫 퀘스트를 시작해 볼까요?</Empty>}
-        {recent.map((r) => {
+        {recent.map(({ sub: r, item }) => {
+          if (item) return <EnglishGroupCard key={item.key} group={item} config={config} compact />;
+          if (!r) return null;
           const def = programById(config, r.program);
           return (
             <div key={r.id} className="card flat row" style={{ alignItems: "flex-start" }}>

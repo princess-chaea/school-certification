@@ -173,7 +173,7 @@ describe("roster csv", () => {
   it("parses the template", () => {
     const r = parseRosterCsv(ROSTER_TEMPLATE);
     expect(r.errors).toEqual([]);
-    expect(r.rows).toHaveLength(3);
+    expect(r.rows).toHaveLength(4);
     expect(r.rows[2]).toMatchObject({ grade: 1, classNo: 1, number: 1, name: "이하늘", email: "" });
   });
   it("works without number column and assigns numbers by name", () => {

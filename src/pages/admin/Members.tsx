@@ -17,6 +17,7 @@ import { askConfirm, askText, notice, Modal } from "../../components/Modal";
 import { useSession } from "../../lib/auth";
 import { RoleBox, SubjectClassPicker } from "../TeacherSignup";
 import { deleteStudentFlow } from "../../lib/students";
+import "./RosterGuide.css";
 
 function download(name: string, text: string, type = "text/csv;charset=utf-8") {
   const url = URL.createObjectURL(new Blob([text], { type }));
@@ -311,11 +312,29 @@ function RosterUpload() {
     <div className="stack">
       <div className="card stack">
         <b>학생 명단 올리기 ({school.year}학년도)</b>
-        <ol className="small muted" style={{ lineHeight: 1.8, margin: 0, paddingLeft: 18 }}>
-          <li>양식을 내려받아 <b>학년, 반, 번호(선택), 이름(선택), 이메일</b>을 채워요. 이름을 비우면 학생이 첫 로그인 때 직접 입력하고, 그 뒤에는 담임 선생님만 고칠 수 있어요. 학교 구글 계정 관리 화면에서 받은 전체 목록을 붙여 넣으면 편해요.</li>
-          <li>태블릿·계정이 없는 학생(1~2학년 등)은 이메일을 비워 두면 돼요. 담임이 관찰 기록으로 체크해요.</li>
-          <li>CSV(쉼표로 구분)로 저장해서 올려요. 이미 있는 학생은 학년·반·이름이 갱신돼요.</li>
-        </ol>
+        <div className="roster-guide-paths">
+          <section className="roster-guide-path" aria-labelledby="roster-student-path">
+            <div className="roster-guide-heading"><PixelIcon name="school" size={28} /><div><span className="roster-guide-tag">구글 워크스페이스 계정 · 기기 있음</span><h3 id="roster-student-path">학생이 직접 참여해요</h3></div></div>
+            <ol className="roster-guide-flow">
+              <li><span>1</span><div><b>명단 등록</b><small>학교 구글 계정 이메일 입력</small></div></li>
+              <li><span>2</span><div><b>학생 로그인</b><small>학교 계정으로 접속</small></div></li>
+              <li><span>3</span><div><b>활동 기록 올리기</b><small>교사 확인 후 횟수 반영</small></div></li>
+            </ol>
+          </section>
+          <section className="roster-guide-path roster-guide-path-offline" aria-labelledby="roster-teacher-path">
+            <div className="roster-guide-heading"><PixelIcon name="eye" size={28} /><div><span className="roster-guide-tag">계정 또는 태블릿 PC 없음</span><h3 id="roster-teacher-path">교사가 대신 기록해요</h3></div></div>
+            <ol className="roster-guide-flow">
+              <li><span>1</span><div><b>명단 등록</b><small>계정이 없으면 이메일은 빈칸</small></div></li>
+              <li><span>2</span><div><b>오프라인 활동 확인</b><small>독서기록장 · 수업 활동 등</small></div></li>
+              <li><span>3</span><div><b>교사의 일괄 체크</b><small>권한을 받은 교사가 횟수 추가</small></div></li>
+            </ol>
+          </section>
+        </div>
+        <div className="roster-guide-note">
+          <PixelIcon name="users" size={24} />
+          <div><b>이름·이메일은 선택 입력이에요</b><p>학년·반을 입력하고, 이름과 이메일을 모두 비울 때는 번호를 꼭 입력해 주세요. 이름은 학생이 첫 로그인 때 입력하거나, 교사가 <strong>현황 → 이름 일괄 입력</strong>에서 나중에 채울 수 있어요.</p></div>
+        </div>
+        <p className="roster-guide-save small muted"><b>양식 내려받기 → 명단 작성 → CSV(쉼표로 구분)로 저장 → 파일 올리기</b><br />이미 등록된 학생은 명단 정보가 갱신돼요.</p>
         <div className="row">
           <button className="btn secondary" onClick={() => download("학생명단_양식.csv", ROSTER_TEMPLATE)}><PixelIcon name="download" size={16} /> 양식 내려받기</button>
           <button className="btn" onClick={() => fileRef.current?.click()}><PixelIcon name="upload" size={16} /> CSV 파일 고르기</button>
@@ -337,7 +356,7 @@ function RosterUpload() {
           <div className="table-wrap" style={{ maxHeight: 320 }}>
             <table className="table">
               <thead><tr><th>학년</th><th>반</th><th>번호</th><th>이름</th><th>이메일</th></tr></thead>
-              <tbody>{rows.slice(0, 200).map((r, i) => <tr key={i}><td>{r.grade}</td><td>{r.classNo}</td><td className="num">{r.number}</td><td>{r.name || <span className="muted">(첫 로그인 때 입력)</span>}</td><td className="small">{r.email || <span className="muted">(계정 없음)</span>}</td></tr>)}</tbody>
+              <tbody>{rows.slice(0, 200).map((r, i) => <tr key={i}><td>{r.grade}</td><td>{r.classNo}</td><td className="num">{r.number}</td><td>{r.name || <span className="muted">(나중에 입력)</span>}</td><td className="small">{r.email || <span className="muted">(계정 없음)</span>}</td></tr>)}</tbody>
             </table>
           </div>
           <label className="row small" style={{ gap: 6 }}><input type="checkbox" checked={deactivate} onChange={(e) => setDeactivate(e.target.checked)} /> 이 파일에 없는 기존 학생은 비활성(전학 등)으로 바꾸기</label>

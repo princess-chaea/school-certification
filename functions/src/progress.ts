@@ -4,9 +4,10 @@ import { AggregateField } from "firebase-admin/firestore";
 import { db, loadConfig, REGION, FieldValue, sp, todayKey } from "./common.js";
 import { activePrograms, computeProgress, withCertifiedDates, type StudentProgress } from "./shared/domain.js";
 
-async function sumSubmissions(schoolId: string, year: number, sid: string, program: string, task?: string) {
+async function sumSubmissions(schoolId: string, year: number, sid: string, program: string, task?: string, teacherOnly = false) {
   let q = db.collection(sp(schoolId, "submissions")).where("year", "==", year).where("sid", "==", sid).where("status", "==", "active").where("program", "==", program);
   if (task) q = q.where("task", "==", task);
+  if (teacherOnly) return (await q.get()).docs.reduce((sum, row) => sum + (row.get("source") === "teacher" ? Number(row.get("count") ?? 0) : 0), 0);
   const agg = await q.aggregate({ total: AggregateField.sum("count") }).get();
   return Number(agg.data().total ?? 0);
 }
@@ -23,6 +24,8 @@ async function countChecked(schoolId: string, year: number, sid: string, program
     .get();
   return agg.data().count;
 }
+
+export function combineSentenceCredits(checked: number, offline: number): number { return checked + offline; }
 
 /** 학생 한 명의 항목별 진행률·금은동을 다시 계산해 students/{sid}.progress 에 기록 */
 export async function recomputeStudent(schoolId: string, sid: string, expectedYear?: number) {
@@ -41,7 +44,7 @@ export async function recomputeStudent(schoolId: string, sid: string, expectedYe
     activePrograms(config, grade).map(async (p) => {
       if (p.kind === "tasks") {
         const entries = await Promise.all(
-          (p.tasks ?? []).map(async (t) => [t.id, t.kind === "sentences" ? await countChecked(schoolId, year, sid, p.id, t.id) : await sumSubmissions(schoolId, year, sid, p.id, t.id)] as const),
+          (p.tasks ?? []).map(async (t) => [t.id, t.kind === "sentences" ? combineSentenceCredits(...await Promise.all([countChecked(schoolId, year, sid, p.id, t.id), sumSubmissions(schoolId, year, sid, p.id, t.id, true)])) : await sumSubmissions(schoolId, year, sid, p.id, t.id)] as const),
         );
         counts[p.id] = Object.fromEntries(entries);
       } else {

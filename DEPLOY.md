@@ -47,6 +47,16 @@ gsutil cors set storage.cors.json gs://school-certification-e1a6c.firebasestorag
 - Firebase 콘솔 → Authentication → 설정 → 승인된 도메인에 `school-certification.vercel.app` 추가
 - 데이터베이스 규칙·Cloud Functions·Storage는 Firebase에 따로 배포한다(아래)
 
+## 2-2. 오프라인 활동 일괄 인정 기능 배포 순서
+
+일괄 체크는 교사 화면, Cloud Functions, Firestore 규칙이 함께 바뀐다. 운영 중인 학교에서는 다음 순서를 지킨다.
+
+1. Functions를 먼저 배포한다. `bulkRecognize`, `requestJoin`, `onSubmissionWritten`, `onEnglishItemWritten`이 새 코드여야 한다. `requestJoin`은 이미 권한을 받은 교사가 가입 요청으로 담당 범위를 다시 쓰지 못하게 한다.
+2. 새 화면을 `main`에 반영하고 Vercel 운영 배포가 준비된 뒤, 관리자와 권한을 받은 교사의 일괄 체크 화면을 확인한다. 관리자는 모든 항목을 볼 수 있고, 일반교사는 허용된 항목과 담당 학생만 볼 수 있다.
+3. 마지막에 Firestore 규칙을 배포한다. 새 규칙은 브라우저에서 제출 기록을 직접 생성하는 구형 일괄 체크를 막고, 서버 함수만 새 기록을 만들게 한다. 이전 화면이 열린 기기에는 새로고침을 안내한다.
+
+검증할 때는 권한 없는 일반교사의 탭과 `/bulk` 직접 접근, 항목별 권한 부여·회수, 영어 세부 과제의 오프라인 인정, 재시도 시 중복 인정 방지, 학생 진행도 반영을 확인한다.
+
 ## 3. 첫 학교(하주초) 열기
 
 1. 배포 주소(`https://school-certification.vercel.app`, Vercel이 main 브랜치를 자동 배포)에서 **운영자 계정**(dltjdrms320@gmail.com 등)으로 로그인

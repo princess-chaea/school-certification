@@ -41,20 +41,32 @@ export function MyRoles({ staff }: { staff: StaffDoc }) {
   const [busy, setBusy] = useState(false);
   const toggle = <T,>(arr: T[], v: T) => (arr.includes(v) ? arr.filter((x) => x !== v) : [...arr, v]);
   const isAdmin = staff.role === "admin";
+  const assignmentLocked = !isAdmin && Boolean(staff.bulkRecognitionPrograms?.length);
+  useEffect(() => {
+    if (!assignmentLocked) return;
+    setHomeroom(Boolean(staff.homeroom));
+    setGrade(staff.grade ?? 3);
+    setClassNo(staff.classNo ?? 1);
+    setSubject(Boolean(staff.subject));
+    setGrades(staff.grades ?? []);
+    setPrograms(staff.programs ?? []);
+  }, [assignmentLocked, staff.homeroom, staff.grade, staff.classNo, staff.subject, staff.grades, staff.programs]);
   const hasPrograms = config.programs.some((p) => p.enabled);
-  const valid = name.trim() && (isAdmin || homeroom || subject) && (!subject || (grades.length > 0 && (programs.length > 0 || !hasPrograms)));
+  const valid = name.trim() && (assignmentLocked || ((isAdmin || homeroom || subject) && (!subject || (grades.length > 0 && (programs.length > 0 || !hasPrograms)))));
 
   async function save() {
     setBusy(true);
     try {
       await updateDoc(doc(db, sp(schoolId, `staff/${staff.uid}`)), {
         name: name.trim().slice(0, 30),
-        homeroom,
-        grade: homeroom ? grade : null,
-        classNo: homeroom ? classNo : null,
-        subject,
-        grades: subject ? grades : [],
-        programs: subject ? programs : [],
+        ...(!assignmentLocked ? {
+          homeroom,
+          grade: homeroom ? grade : null,
+          classNo: homeroom ? classNo : null,
+          subject,
+          grades: subject ? grades : [],
+          programs: subject ? programs : [],
+        } : {}),
         updatedAt: serverTimestamp(),
       });
       toast("저장했어요.");
@@ -84,7 +96,9 @@ export function MyRoles({ staff }: { staff: StaffDoc }) {
             {adminState.canClaim && <button className="btn sm" onClick={claim}>학교 담당자 맡기</button>}
           </div>
         </div>
-        <RoleBox icon="users" title="담임" desc="우리 반 학생의 모든 인증 기록 확인" on={homeroom} onToggle={() => setHomeroom(!homeroom)}>
+        {assignmentLocked && <p className="small muted">일괄 체크 권한이 있어 담당 변경은 학교 담당자가 [구성원]에서 해요. 이름은 직접 수정할 수 있어요.</p>}
+        <fieldset disabled={assignmentLocked || busy} style={{ border: 0, padding: 0, margin: 0 }} className="stack">
+        <RoleBox icon="users" title="담임" desc="우리 반 학생의 모든 인증 기록 확인" on={homeroom} onToggle={() => { if (!assignmentLocked && !busy) setHomeroom(!homeroom); }}>
           <div className="row">
             <select className="input" style={{ width: 120 }} value={grade} onChange={(e) => { setGrade(Number(e.target.value)); setClassNo(1); }}>
               {[1, 2, 3, 4, 5, 6].map((g) => <option key={g} value={g}>{g}학년</option>)}
@@ -94,7 +108,7 @@ export function MyRoles({ staff }: { staff: StaffDoc }) {
             </select>
           </div>
         </RoleBox>
-        <RoleBox icon="flag" title="전담 · 인증 업무 담당" desc="고른 학년의 고른 인증 항목 기록 확인" on={subject} onToggle={() => setSubject(!subject)}>
+        <RoleBox icon="flag" title="전담 · 인증 업무 담당" desc="고른 학년의 고른 인증 항목 기록 확인" on={subject} onToggle={() => { if (!assignmentLocked && !busy) setSubject(!subject); }}>
           <div className="field">
             <span className="small" style={{ fontWeight: 700 }}>담당 학년</span>
             <div className="row">
@@ -113,6 +127,7 @@ export function MyRoles({ staff }: { staff: StaffDoc }) {
             </div>
           </div>
         </RoleBox>
+        </fieldset>
         <button className="btn big" disabled={!valid || busy} onClick={save}>{busy ? "저장 중…" : "저장"}</button>
       </div>
     </div>

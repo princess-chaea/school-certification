@@ -65,8 +65,10 @@ export function Feed() {
     setReason("");
     toast("기록을 제외했어요. 진행률이 다시 계산돼요.");
   }
-  async function restore(id: string) {
-    await updateDoc(doc(db, sp(schoolId, `submissions/${id}`)), { status: "active", deleteReason: "", deletedBy: "", deletedAt: null });
+  const canRestore = (record: Submission) => record.source !== "teacher" || staff.role === "admin" || Boolean(staff.bulkRecognitionPrograms?.includes(record.program));
+  async function restore(record: Submission) {
+    if (!canRestore(record)) return;
+    await updateDoc(doc(db, sp(schoolId, `submissions/${record.id}`)), { status: "active", deleteReason: "", deletedBy: "", deletedAt: null });
     toast("기록을 되살렸어요.");
   }
 
@@ -97,7 +99,7 @@ export function Feed() {
                 {r.activityType && <span className="chip gray">{r.activityType}</span>}
                 {r.status === "pending" && <span className="chip warn">확인 대기</span>}
                 {r.status === "active" && r.reviewedByName && <span className="chip ok">인정 · {r.reviewedByName}</span>}
-                {r.source === "teacher" && <span className="chip">교사 관찰 {r.count}회 · {r.createdByName}</span>}
+                {r.source === "teacher" && <span className="chip">{r.recognitionMode === "offline" ? "오프라인 인정" : "교사 관찰"} {r.count}{r.task ? (programById(config, r.program)?.tasks?.find((t) => t.id === r.task)?.kind === "sentences" ? "문장" : "회") : programById(config, r.program)?.unit ?? "회"} · {r.createdByName}</span>}
               </div>
               {Object.entries(r.fields ?? {}).filter(([, v]) => v).map(([k, v]) => <div key={k} className="small"><span className="muted">{k}:</span> {v}</div>)}
               {r.text && <div className="small muted">“{r.text}”</div>}
@@ -108,7 +110,7 @@ export function Feed() {
               {r.status === "deleted" ? (
                 <div className="row">
                   <span className="chip red">제외됨: {r.deleteReason} ({r.deletedBy})</span>
-                  <button className="btn ghost sm" onClick={() => restore(r.id)}>되살리기</button>
+                  {canRestore(r) && <button className="btn ghost sm" onClick={() => restore(r)}>되살리기</button>}
                 </div>
               ) : deleting === r.id ? (
                 <div className="row">

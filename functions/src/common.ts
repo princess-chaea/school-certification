@@ -54,6 +54,7 @@ export interface StaffDoc {
   subject?: boolean; // 전담
   grades?: number[];
   programs?: string[];
+  bulkRecognitionPrograms?: string[];
 }
 
 export async function isSuper(uid?: string) {

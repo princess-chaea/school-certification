@@ -1,5 +1,5 @@
 import { useRef, useState } from "react";
-import { deleteDoc, doc, updateDoc, where, orderBy } from "firebase/firestore";
+import { deleteDoc, doc, updateDoc, where, orderBy, writeBatch, serverTimestamp, arrayUnion, arrayRemove } from "firebase/firestore";
 import { httpsCallable } from "firebase/functions";
 import { db, functions } from "../../firebase";
 import { useCollection } from "../../lib/data";
@@ -13,8 +13,9 @@ import { classesOf, GRADES } from "../../lib/classes";
 import { useConfig } from "../../lib/config";
 import { programById } from "../../../shared/domain";
 import { PixelIcon } from "../../components/Pixel";
-import { askConfirm, askText, notice } from "../../components/Modal";
+import { askConfirm, askText, notice, Modal } from "../../components/Modal";
 import { useSession } from "../../lib/auth";
+import { RoleBox } from "../TeacherSignup";
 import { deleteStudentFlow } from "../../lib/students";
 
 function download(name: string, text: string, type = "text/csv;charset=utf-8") {
@@ -29,29 +30,39 @@ function download(name: string, text: string, type = "text/csv;charset=utf-8") {
 }
 
 export function Members() {
-  const [tab, setTab] = useState<"staff" | "roster" | "students">("staff");
+  const [tab, setTab] = useState<"admins" | "teachers" | "roster" | "students">("teachers");
   return (
     <div className="page">
       <PageHeader icon="users" title="구성원 관리" />
       <div className="row" style={{ marginBottom: 14 }}>
-        <button className={`choice ${tab === "staff" ? "on" : ""}`} onClick={() => setTab("staff")}><PixelIcon name="users" size={16} /> 교사·담당자</button>
+        <button className={`choice ${tab === "admins" ? "on" : ""}`} onClick={() => setTab("admins")}><PixelIcon name="gear" size={16} /> 관리자</button>
+        <button className={`choice ${tab === "teachers" ? "on" : ""}`} onClick={() => setTab("teachers")}><PixelIcon name="users" size={16} /> 교사</button>
         <button className={`choice ${tab === "students" ? "on" : ""}`} onClick={() => setTab("students")}><PixelIcon name="school" size={16} /> 학급별 학생</button>
         {/* 보기 탭은 왼쪽, 명단 올리기는 오른쪽 끝 */}
         <button className={`choice ${tab === "roster" ? "on" : ""}`} style={{ marginLeft: "auto" }} onClick={() => setTab("roster")}><PixelIcon name="upload" size={16} /> 학생 명단 CSV 올리기</button>
       </div>
-      {tab === "staff" && <StaffManager />}
+      {(tab === "admins" || tab === "teachers") && <StaffManager key={`${tab}`} role={tab === "admins" ? "admin" : "teacher"} />}
       {tab === "roster" && <RosterUpload />}
       {tab === "students" && <ClassRoster />}
     </div>
   );
 }
 
-function StaffManager() {
+function StaffManager({ role }: { role: StaffDoc["role"] }) {
   const schoolId = useSchoolId();
   const { rows } = useCollection<StaffDoc & { id: string }>(sp(schoolId, "staff"), [], [schoolId]);
-  const list = (rows ?? []).sort((a, b) => (a.status === "pending" ? -1 : 0) - (b.status === "pending" ? -1 : 0) || (a.grade ?? 9) - (b.grade ?? 9) || (a.classNo ?? 0) - (b.classNo ?? 0));
+  const allStaff = (rows ?? []).slice().sort((a, b) => (a.status === "pending" ? -1 : 0) - (b.status === "pending" ? -1 : 0) || (a.grade ?? 9) - (b.grade ?? 9) || (a.classNo ?? 0) - (b.classNo ?? 0));
+  const list = allStaff.filter((s) => s.role === role);
+  const [selected, setSelected] = useState<string[]>([]);
+  const [busy, setBusy] = useState(false);
+  const [editing, setEditing] = useState<(StaffDoc & { id: string }) | null>(null);
+  const eligible = list.filter((s) => s.status === "active" && s.role === "teacher");
+  const selectedStaff = eligible.filter((s) => selected.includes(s.id));
   const pending = list.filter((s) => s.status === "pending");
   const config = useConfig();
+  const [selectedPrograms, setSelectedPrograms] = useState<string[]>([]);
+  const enabledPrograms = config.programs.filter((p) => p.enabled);
+  const chosenPrograms = selectedPrograms.filter((id) => enabledPrograms.some((p) => p.id === id));
   const label = (s: StaffDoc) => [s.homeroom && `${s.grade}학년 ${s.classNo}반 담임`, s.subject && `전담 ${s.grades?.join("·")}학년 (${(s.programs ?? []).map((p) => programById(config, p)?.name ?? p).join(", ")})`].filter(Boolean).join(" · ") || "-";
   async function set(id: string, patch: Record<string, unknown>) {
     await updateDoc(doc(db, sp(schoolId, `staff/${id}`)), patch);
@@ -59,7 +70,7 @@ function StaffManager() {
   // 학교 담당자는 최소 1명: 마지막 담당자는 해제·삭제 불가
   const me = useSession();
   const myUid = me.kind === "staff" ? me.user.uid : "";
-  const admins = list.filter((s) => s.status === "active" && s.role === "admin");
+  const admins = allStaff.filter((s) => s.status === "active" && s.role === "admin");
   const isLastAdmin = (s: StaffDoc & { id: string }) => s.role === "admin" && s.status === "active" && admins.length <= 1;
   const LAST_ADMIN = "학교 담당자는 최소 1명 있어야 해요.\n먼저 다른 선생님을 [담당자 지정]한 뒤 해제하세요.";
   async function toggleAdmin(s: StaffDoc & { id: string }) {
@@ -75,28 +86,68 @@ function StaffManager() {
     if (isLastAdmin(s)) return void notice("삭제할 수 없어요", "마지막 학교 담당자예요.\n먼저 다른 선생님을 [담당자 지정]한 뒤 삭제하세요.");
     if (await askConfirm({ title: "선생님 삭제", message: `${s.name} 선생님을 삭제할까요?\n다시 쓰려면 선생님이 새로 가입해야 해요.`, ok: "삭제", danger: true })) await deleteDoc(doc(db, sp(schoolId, `staff/${s.id}`)));
   }
+  async function run(action: () => Promise<unknown>) {
+    if (busy) return;
+    setBusy(true);
+    try { await action(); }
+    catch (e) { toast("변경하지 못했어요: " + (e as Error).message); }
+    finally { setBusy(false); }
+  }
+  async function permission(targets: (StaffDoc & { id: string })[], enabled: boolean, programIds = chosenPrograms) {
+    const teachers = targets.filter((s) => s.role === "teacher" && s.status === "active");
+    if (!teachers.length || !programIds.length || busy) return;
+    await run(async () => {
+      if (!(await askConfirm({ title: `일괄 인정 권한 ${enabled ? "부여" : "회수"}`, message: `${teachers.length}명의 선생님에게 ${programIds.map((id) => programById(config, id)?.name ?? id).join(", ")} 일괄 인정 권한을 ${enabled ? "부여" : "회수"}할까요?\n권한이 있는 교사는 맡은 학생의 이전 활동과 관찰 기록을 횟수로 추가할 수 있어요.`, ok: enabled ? "부여" : "회수" }))) return;
+      let completed = 0;
+      try {
+        for (let i = 0; i < teachers.length; i += 400) {
+          const chunk = teachers.slice(i, i + 400);
+          const batch = writeBatch(db);
+          for (const teacher of chunk) batch.update(doc(db, sp(schoolId, `staff/${teacher.id}`)), { bulkRecognitionPrograms: enabled ? arrayUnion(...programIds) : arrayRemove(...programIds), updatedAt: serverTimestamp() });
+          await batch.commit();
+          completed += chunk.length;
+          setSelected((ids) => ids.filter((id) => !chunk.some((s) => s.id === id)));
+        }
+        toast(`${completed}명에게 일괄 인정 권한을 ${enabled ? "부여" : "회수"}했어요.`);
+      } catch (e) {
+        throw new Error(`${completed}명 처리 완료. 나머지 인원은 다시 시도해 주세요. ${(e as Error).message}`);
+      }
+    });
+  }
   return (
     <div className="stack">
+      {role === "teacher" && <div className="card flat stack">
+        <p className="small" style={{ margin: 0 }}>항목별 일괄 인정 권한을 받은 교사는 맡은 학생의 오프라인 활동 횟수를 [일괄 체크]에서 추가할 수 있어요. 권한을 회수해도 이미 인정한 기록은 유지돼요.</p>
+        <div className="field"><span>권한을 변경할 인증 항목</span><div className="row" style={{ flexWrap: "wrap" }}>{enabledPrograms.map((p) => <label key={p.id} className="row small"><input type="checkbox" disabled={busy} checked={chosenPrograms.includes(p.id)} onChange={(e) => setSelectedPrograms((ids) => e.target.checked ? [...ids, p.id] : ids.filter((id) => id !== p.id))} /><PixelIcon name={p.icon} size={16} /> {p.name}</label>)}</div>{!enabledPrograms.length && <span className="small muted">사용 중인 인증 항목이 없어요.</span>}</div>
+        <div className="row" style={{ flexWrap: "wrap" }}>
+          <label className="row small"><input type="checkbox" aria-label="승인된 교사 모두 선택" disabled={busy || !eligible.length} checked={eligible.length > 0 && selectedStaff.length === eligible.length} onChange={(e) => setSelected(e.target.checked ? eligible.map((s) => s.id) : [])} /> 승인된 교사 모두 선택 ({selectedStaff.length}/{eligible.length})</label>
+          <button className="btn sm" disabled={busy || !selectedStaff.length || !chosenPrograms.length} onClick={() => permission(selectedStaff, true)}>선택 교사 권한 부여</button>
+          <button className="btn ghost sm" disabled={busy || !selectedStaff.length || !chosenPrograms.length} onClick={() => permission(selectedStaff, false)}>선택 교사 권한 회수</button>
+        </div>
+      </div>}
+      {role === "admin" && <p className="small muted" style={{ margin: 0 }}>관리자(학교 담당자)는 학교 전체의 일괄 인정과 구성원 관리를 할 수 있어요.</p>}
       {pending.length > 0 && <div className="chip warn" style={{ alignSelf: "flex-start" }}>승인 대기 {pending.length}명</div>}
       {rows === null && <div className="muted">불러오는 중…</div>}
-      {rows?.length === 0 && <Empty>가입한 교사가 없어요.</Empty>}
+      {rows !== null && list.length === 0 && <Empty>등록된 {role === "admin" ? "관리자" : "교사"}가 없어요.</Empty>}
       <div className="table-wrap">
         <table className="table stack-sm">
-          <thead><tr><th>이름</th><th>담당</th><th>이메일</th><th>상태</th><th>권한</th><th></th></tr></thead>
+          <thead><tr>{role === "teacher" && <th>선택</th>}<th>이름</th><th>담당</th><th>이메일</th><th>상태</th><th>{role === "teacher" ? "일괄 인정" : "권한"}</th><th>관리</th></tr></thead>
           <tbody>
             {list.map((s) => (
               <tr key={s.id}>
-                <td><b>{s.name}</b></td>
+                {role === "teacher" && <td data-label="선택"><input type="checkbox" aria-label={`${s.name} 선생님 선택`} disabled={busy || s.status !== "active"} checked={selectedStaff.some((item) => item.id === s.id)} onChange={(e) => setSelected((ids) => e.target.checked ? [...ids, s.id] : ids.filter((id) => id !== s.id))} /></td>}
+                <td><b>{s.name}</b>{s.requestedAdmin && s.role !== "admin" && <span className="chip warn">담당자 신청</span>}</td>
                 <td data-label="담당">{label(s)}</td>
                 <td className="small" data-label="이메일">{s.email}</td>
-                <td>{s.status === "active" ? <span className="chip ok">승인</span> : s.status === "pending" ? <span className="chip warn">대기</span> : <span className="chip red">반려</span>}</td>
-                <td>{s.role === "admin" ? <span className="chip">학교 담당자</span> : "교사"}{s.requestedAdmin && s.role !== "admin" ? <span className="chip warn">담당자 신청</span> : null}</td>
+                <td data-label="상태">{s.status === "active" ? <span className="chip ok">승인</span> : s.status === "pending" ? <span className="chip warn">대기</span> : <span className="chip red">반려</span>}</td>
+                <td data-label="일괄 인정">{s.role === "admin" ? <span className="chip">학교 담당자</span> : <div className="stack" style={{ gap: 6 }}>{enabledPrograms.map((p) => <label key={p.id} className="row small" style={{ flexWrap: "nowrap" }}><input type="checkbox" aria-label={`${s.name} 선생님 ${p.name} 일괄 인정 권한`} disabled={busy || s.status !== "active"} checked={s.bulkRecognitionPrograms?.includes(p.id) === true} onChange={(e) => permission([s], e.target.checked, [p.id])} />{p.name}</label>)}{!enabledPrograms.length && <span className="muted">항목 없음</span>}</div>}</td>
                 <td>
-                  <div className="row" style={{ gap: 6, flexWrap: "nowrap" }}>
-                    {s.status !== "active" && <button className="btn ok sm" onClick={() => set(s.id, { status: "active" })}>승인</button>}
-                    {s.status === "pending" && <button className="btn ghost sm" onClick={() => set(s.id, { status: "rejected" })}>반려</button>}
-                    {s.status === "active" && <button className="btn ghost sm" onClick={() => toggleAdmin(s)}>{s.role === "admin" ? "담당자 해제" : "담당자 지정"}</button>}
-                    <button className="btn ghost sm" onClick={() => remove(s)}>삭제</button>
+                  <div className="row" style={{ gap: 6, flexWrap: "wrap" }}>
+                    <button className="btn ghost sm" disabled={busy} onClick={() => setEditing(s)}>담당 수정</button>
+                    {s.status !== "active" && <button className="btn ok sm" disabled={busy} onClick={() => run(() => set(s.id, { status: "active" }))}>승인</button>}
+                    {s.status === "pending" && <button className="btn ghost sm" disabled={busy} onClick={() => run(() => set(s.id, { status: "rejected" }))}>반려</button>}
+                    {s.status === "active" && <button className="btn ghost sm" disabled={busy} onClick={() => run(() => toggleAdmin(s))}>{s.role === "admin" ? "담당자 해제" : "담당자 지정"}</button>}
+                    <button className="btn ghost sm" disabled={busy} onClick={() => run(() => remove(s))}>삭제</button>
                   </div>
                 </td>
               </tr>
@@ -104,8 +155,56 @@ function StaffManager() {
           </tbody>
         </table>
       </div>
+      {editing && <AssignmentEditor key={editing.id} staff={editing} schoolId={schoolId} onClose={() => setEditing(null)} />}
     </div>
   );
+}
+
+function AssignmentEditor({ staff, schoolId, onClose }: { staff: StaffDoc & { id: string }; schoolId: string; onClose: () => void }) {
+  const config = useConfig();
+  const [homeroom, setHomeroom] = useState(Boolean(staff.homeroom));
+  const [grade, setGrade] = useState(staff.grade ?? 3);
+  const [classNo, setClassNo] = useState(staff.classNo ?? 1);
+  const [subject, setSubject] = useState(Boolean(staff.subject));
+  const [grades, setGrades] = useState(staff.grades ?? []);
+  const [programs, setPrograms] = useState(staff.programs ?? []);
+  const [busy, setBusy] = useState(false);
+  const availablePrograms = config.programs.filter((p) => p.enabled || programs.includes(p.id));
+  const toggle = <T,>(values: T[], value: T) => values.includes(value) ? values.filter((v) => v !== value) : [...values, value];
+  const valid = (staff.role === "admin" || homeroom || subject)
+    && (!homeroom || (GRADES.includes(grade) && Number.isInteger(classNo) && classNo >= 1 && classNo <= 99))
+    && (!subject || (grades.length > 0 && grades.every((g) => GRADES.includes(g)) && (programs.length > 0 || !config.programs.some((p) => p.enabled)) && programs.every((id) => config.programs.some((p) => p.id === id))));
+  async function save() {
+    if (!valid || busy) return;
+    setBusy(true);
+    try {
+      await updateDoc(doc(db, sp(schoolId, `staff/${staff.id}`)), {
+        homeroom, grade: homeroom ? grade : null, classNo: homeroom ? classNo : null,
+        subject, grades: subject ? [...new Set(grades)].sort((a, b) => a - b) : [], programs: subject ? [...new Set(programs)] : [], updatedAt: serverTimestamp(),
+      });
+      toast(`${staff.name} 선생님의 담당을 저장했어요.`);
+      onClose();
+    } catch (e) { toast("저장하지 못했어요: " + (e as Error).message); }
+    finally { setBusy(false); }
+  }
+  return <Modal title={`${staff.name} 선생님 담당 수정`} icon="users" wide onClose={() => { if (!busy) onClose(); }}>
+    <div className="stack">
+      <fieldset disabled={busy} className="stack" style={{ border: 0, padding: 0, margin: 0, minWidth: 0 }}>
+        <RoleBox icon="users" title="담임" desc="우리 반 학생의 모든 인증 항목 담당" on={homeroom} onToggle={() => setHomeroom(!homeroom)}>
+          <div className="row" style={{ flexWrap: "wrap" }}>
+            <label className="field"><span>담당 학년</span><select className="input" value={grade} onChange={(e) => { setGrade(Number(e.target.value)); setClassNo(1); }}>{GRADES.map((g) => <option key={g} value={g}>{g}학년</option>)}</select></label>
+            <label className="field"><span>담당 반</span><input className="input" type="number" min={1} max={99} step={1} value={classNo} onChange={(e) => setClassNo(Number(e.target.value))} /></label>
+          </div>
+        </RoleBox>
+        <RoleBox icon="flag" title="전담 · 인증 업무 담당" desc="선택한 학년과 인증 항목 담당" on={subject} onToggle={() => setSubject(!subject)}>
+          <div className="field"><span>담당 학년</span><div className="row" style={{ flexWrap: "wrap" }}>{GRADES.map((g) => <button key={g} aria-pressed={grades.includes(g)} className={`choice ${grades.includes(g) ? "on" : ""}`} onClick={() => setGrades(toggle(grades, g))}>{g}학년</button>)}</div></div>
+          <div className="field"><span>담당 인증 항목</span><div className="row" style={{ flexWrap: "wrap" }}>{availablePrograms.map((p) => <button key={p.id} aria-pressed={programs.includes(p.id)} className={`choice ${programs.includes(p.id) ? "on" : ""}`} onClick={() => setPrograms(toggle(programs, p.id))}><PixelIcon name={p.icon} size={16} /> {p.name}{!p.enabled && " (중지)"}</button>)}</div>{availablePrograms.length === 0 && <span className="small muted">학교 인증 항목을 만든 뒤 담당 항목을 지정해 주세요.</span>}</div>
+        </RoleBox>
+      </fieldset>
+      {!valid && <p className="small" role="status" style={{ margin: 0 }}>담임의 학년·반 또는 전담의 학년·인증 항목을 확인해 주세요.</p>}
+      <div className="modal-actions"><button className="btn" disabled={busy || !valid} onClick={save}>{busy ? "저장 중…" : "담당 저장"}</button><button className="btn ghost" disabled={busy} onClick={onClose}>취소</button></div>
+    </div>
+  </Modal>;
 }
 
 function RosterUpload() {

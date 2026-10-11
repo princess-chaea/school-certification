@@ -224,6 +224,13 @@ export const requestJoin = onCall({ region: REGION, secrets: [NEIS_API_KEY] }, a
     if (!created && currentSchool.get("status") !== "active") throw new HttpsError("failed-precondition", "현재 가입할 수 없는 학교예요. 플랫폼 운영자에게 문의하세요.");
     if (created && !verified) throw new HttpsError("aborted", "학교 정보가 변경되었어요. 다시 검색해 주세요.");
     if (cur.exists && cur.get("status") === "rejected") throw new HttpsError("permission-denied", "가입이 거절된 계정이에요. 학교 담당자에게 문의하세요.");
+    // Rejoining reconnects the account; it must not replace administrator-managed
+    // assignments, or preserve a grant while widening its classroom/program scope.
+    const grants = cur.get("bulkRecognitionPrograms");
+    if (!created && cur.exists && (cur.get("status") === "active" || (Array.isArray(grants) && grants.length > 0))) {
+      tx.set(userRef, { schoolId, email, updatedAt: FieldValue.serverTimestamp() }, { merge: true });
+      return { status: cur.get("status") === "active" ? "active" : "pending", schoolId, created: false };
+    }
     const policy = created ? "open" : (currentSchool.get("joinPolicy") ?? "open");
     const keepAdmin = cur.exists && cur.get("role") === "admin" && cur.get("status") === "active";
     const active = policy === "open" || (cur.exists && cur.get("status") === "active");

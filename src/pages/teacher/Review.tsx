@@ -212,9 +212,12 @@ function SentenceQueue() {
 }
 
 export function AiChip({ review }: { review: { verdict: "ok" | "check" | "reject"; reason: string } }) {
+  const reason = review.reason?.trim() === "AI 확인 중 오류가 났어요."
+    ? "자동 확인을 완료하지 못했어요. 사진을 직접 확인해 주세요."
+    : review.reason?.trim() || "판단 사유가 기록되지 않았어요. 사진을 직접 확인해 주세요.";
   return (
     <div className="small">
-      <span className={`chip ${review.verdict === "ok" ? "ok" : review.verdict === "check" ? "warn" : "red"}`}><PixelIcon name="robot" size={12} /> AI {review.verdict === "ok" ? "확인됨" : review.verdict === "check" ? "확인 필요" : "관련 없는 기록 같아요"}</span> <span className="muted">{review.reason}</span>
+      <span className={`chip ${review.verdict === "ok" ? "ok" : review.verdict === "check" ? "warn" : "red"}`}><PixelIcon name="robot" size={12} /> {review.verdict === "ok" ? "AI 확인됨" : review.verdict === "check" ? "확인 필요" : "AI 관련 없는 기록 같아요"}</span> <span className="muted">사유: {reason}</span>
     </div>
   );
 }

@@ -24,11 +24,16 @@ const configCache = new Map<string, { at: number; value: AppConfig }>();
 export async function loadConfig(schoolId: string): Promise<AppConfig> {
   const hit = configCache.get(schoolId);
   if (hit && Date.now() - hit.at < 60_000) return hit.value;
-  const snap = await db.doc(sp(schoolId, "config/app")).get();
+  const [snap, school] = await Promise.all([
+    db.doc(sp(schoolId, "config/app")).get(),
+    db.doc(sp(schoolId)).get(),
+  ]);
   const merged = snap.exists ? mergeConfig(snap.data() as Partial<AppConfig>) : DEFAULT_CONFIG;
   // AI 모델·하루 상한은 학교가 아니라 서버 관리자가 정함: 코드 기본값 + platform/settings.ai (Firebase 콘솔에서 수정)
   const platform = await db.doc("platform/settings").get();
   const value = { ...merged, ai: { ...DEFAULT_CONFIG.ai, ...((platform.get("ai") as Partial<AppConfig["ai"]>) ?? {}) } };
+  // 학교 관리자는 이 필드를 바꿀 수 없다. 기존 학교의 누락 필드는 기존 동작을 유지한다.
+  if (school.get("aiReviewEnabled") === false) value.ai.enabled = false;
   configCache.set(schoolId, { at: Date.now(), value });
   return value;
 }

@@ -1,17 +1,17 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { doc, serverTimestamp, setDoc, updateDoc } from "firebase/firestore";
-import { sp, useSchoolId } from "../../lib/tenant";
-import { db } from "../../firebase";
+import { httpsCallable } from "firebase/functions";
+import { useSchoolId } from "../../lib/tenant";
+import { functions } from "../../firebase";
 import { useMyEnglishItems, useSentenceSet } from "../../lib/data";
-import { completedRounds, itemId, ROUNDS_REQUIRED, statusLabel, targetOf } from "../../lib/english";
+import { completedRounds, ROUNDS_REQUIRED, statusLabel, targetOf } from "../../lib/english";
 import { uploadBlob } from "../../lib/media";
 import { useRecorder } from "../../lib/useRecorder";
 import { playCorrect, playWrong } from "../../lib/sound";
 import { recognizeOnce, speak, speechRecognitionSupported } from "../../lib/speech";
 import { diffWords, firstLetterHint, isCorrectAnswer, speechMatchRatio } from "../../../shared/typing";
 import { fmtSec } from "../../lib/format";
-import type { EnglishItem, EnglishRound, StudentDoc } from "../../lib/types";
+import type { StudentDoc } from "../../lib/types";
 import { Stamp, toast } from "../../components/ui";
 import { PageHeader } from "../../components/Layout";
 import { useDingOnCheck } from "./SentenceSet";
@@ -31,7 +31,6 @@ export function SentencePractice({ student, program, task: taskDef, no }: { stud
   const ding = useDingOnCheck(items);
   const s = set?.items.find((x) => x.no === no);
   const item = useMemo(() => items?.find((i) => i.setId === setId && i.no === no), [items, setId, no]);
-  const id = itemId(student.year, student.sid, setId, no);
   const task = taskDef.id;
 
   const [step, setStep] = useState<Step>("type");
@@ -42,6 +41,8 @@ export function SentencePractice({ student, program, task: taskDef, no }: { stud
   const [stt, setStt] = useState<{ text: string; ratio: number } | null>(null);
   const [saving, setSaving] = useState(false);
   const rec = useRecorder(30_000);
+  const submitting = useRef(false);
+  const uploadedRound = useRef<{ key: string; path: string } | null>(null);
 
   // 문장이 바뀌면 처음부터
   useEffect(() => {
@@ -64,7 +65,7 @@ export function SentencePractice({ student, program, task: taskDef, no }: { stud
   const locked = status === "checked" || status === "requested";
 
   if (s.type === "student" && !item?.custom?.en) {
-    return <CustomSentenceForm student={student} program={program.id} base={base} setId={setId} no={no} unit={s.unit ?? 0} task={task} prompt={s.prompt} />;
+    return <CustomSentenceForm program={program.id} base={base} setId={setId} no={no} unit={s.unit ?? 0} task={task} prompt={s.prompt} />;
   }
 
   function check() {
@@ -93,43 +94,48 @@ export function SentencePractice({ student, program, task: taskDef, no }: { stud
   }
 
   async function saveRound() {
-    if (!rec.recording) return;
+    if (!rec.recording || submitting.current) return;
+    submitting.current = true;
     setSaving(true);
     try {
-      const ext = rec.recording.mime.includes("mp4") ? "m4a" : rec.recording.mime.includes("ogg") ? "ogg" : "webm";
-      // 문장마다 최신 녹음 1개만 보관 (덮어쓰기)
-      const path = `schools/${schoolId}/uploads/${student.sid}/english/${setId}-${no}.${ext}`;
-      await uploadBlob(path, rec.recording.blob, rec.recording.mime);
-      const round: EnglishRound = {
-        typedOk: true,
-        attempts: attempts.length,
-        audioPath: path,
-        durationMs: rec.recording.durationMs,
-        at: Date.now(),
-        ...(stt ? { sttText: stt.text } : {}),
-      };
-      const nextRounds = [...(item?.rounds ?? []), round];
-      const done = nextRounds.filter((r) => r.typedOk && r.audioPath).length;
-      const nextStatus: EnglishItem["status"] = status === "retry" || done >= ROUNDS_REQUIRED ? "ready" : "practicing";
-      if (item) {
-        await updateDoc(doc(db, sp(schoolId, "englishItems"), id), { rounds: nextRounds, status: nextStatus, updatedAt: serverTimestamp() });
-      } else {
-        await setDoc(doc(db, sp(schoolId, "englishItems"), id), {
-          sid: student.sid, year: student.year, grade: student.grade, classNo: student.classNo, program: program.id, setId, task, no,
-          rounds: nextRounds, status: nextStatus, updatedAt: serverTimestamp(),
+      const audioKey = `${setId}:${no}:${rec.recording.url}`;
+      let path = uploadedRound.current?.key === audioKey ? uploadedRound.current.path : "";
+      if (!path) {
+        const ticket = await httpsCallable<Record<string, unknown>, { path: string; maxBytes: number }>(functions, "issueUploadTicket")({
+          schoolId, program: program.id, task, kind: "sentenceAudio", setId, no, contentType: rec.recording.mime,
         });
+        if (rec.recording.blob.size > ticket.data.maxBytes) throw new Error("녹음 용량이 너무 커요. 짧게 다시 녹음해 주세요.");
+        path = ticket.data.path;
+        await uploadBlob(path, rec.recording.blob, rec.recording.mime);
+        uploadedRound.current = { key: audioKey, path };
       }
+      await httpsCallable(functions, "saveSentencePractice")({
+        schoolId, program: program.id, task, setId, no, action: "round",
+        typed, attempts: attempts.length, audioPath: path, durationMs: rec.recording.durationMs,
+        ...(stt ? { sttText: stt.text } : {}),
+      });
       setStep("saved");
     } catch (e) {
       toast("저장하지 못했어요: " + (e as Error).message);
     } finally {
+      submitting.current = false;
       setSaving(false);
     }
   }
 
   async function requestCheck() {
-    await updateDoc(doc(db, sp(schoolId, "englishItems"), id), { status: "requested", requestedAt: serverTimestamp(), updatedAt: serverTimestamp() });
-    toast("검사 요청 완료! 선생님께 말해 주세요");
+    if (submitting.current) return;
+    submitting.current = true;
+    setSaving(true);
+    try {
+      await httpsCallable(functions, "saveSentencePractice")({ schoolId, program: program.id, task, setId, no, action: "request" });
+      toast("검사 요청 완료! 선생님께 말해 주세요");
+    } catch (e) {
+      toast("검사 요청하지 못했어요: " + (e as Error).message);
+    } finally {
+      submitting.current = false;
+      setSaving(false);
+    }
   }
 
   function again() {
@@ -261,7 +267,7 @@ export function SentencePractice({ student, program, task: taskDef, no }: { stud
               <>
                 <b>{ROUNDS_REQUIRED}번 연습 완료! 이제 선생님께 검사를 받아요.</b>
                 <div className="action-col">
-                  <button className="btn big ok" onClick={requestCheck}><PixelIcon name="hand" size={20} /> 검사 요청하기</button>
+                  <button className="btn big ok" disabled={saving} onClick={requestCheck}><PixelIcon name="hand" size={20} /> 검사 요청하기</button>
                   {nextNo && <button className="btn secondary" onClick={() => nav(`${base}/${nextNo}`)}>다음 문장</button>}
                 </div>
               </>
@@ -277,18 +283,19 @@ export function SentencePractice({ student, program, task: taskDef, no }: { stud
           </div>
         )}
         {!locked && status === "ready" && step === "type" && (
-          <button className="btn ok" onClick={requestCheck}><PixelIcon name="hand" size={18} /> 바로 검사 요청하기 (연습 {rounds}회 완료)</button>
+          <button className="btn ok" disabled={saving} onClick={requestCheck}><PixelIcon name="hand" size={18} /> 바로 검사 요청하기 (연습 {rounds}회 완료)</button>
         )}
       </div>
     </div>
   );
 }
 
-function CustomSentenceForm({ student, program, base, setId, no, unit, task, prompt }: { student: StudentDoc; program: string; base: string; setId: string; no: number; unit: number; task: string; prompt?: string }) {
+function CustomSentenceForm({ program, base, setId, no, unit, task, prompt }: { program: string; base: string; setId: string; no: number; unit: number; task: string; prompt?: string }) {
   const schoolId = useSchoolId();
   const [en, setEn] = useState("");
   const [ko, setKo] = useState("");
   const [busy, setBusy] = useState(false);
+  const submitting = useRef(false);
   return (
     <div className="page narrow">
       <PageHeader back={base} icon="pen" title={<>#{no} 나만의 {unit}단원 표현</>} />
@@ -304,15 +311,17 @@ function CustomSentenceForm({ student, program, base, setId, no, unit, task, pro
           className="btn big"
           disabled={busy || en.trim().split(/\s+/).length < 2 || !ko.trim()}
           onClick={async () => {
+            if (submitting.current) return;
+            submitting.current = true;
             setBusy(true);
             try {
-              await setDoc(doc(db, sp(schoolId, "englishItems"), itemId(student.year, student.sid, setId, no)), {
-                sid: student.sid, year: student.year, grade: student.grade, classNo: student.classNo, program, setId, task, no,
-                custom: { en: en.trim(), ko: ko.trim() }, rounds: [], status: "practicing", updatedAt: serverTimestamp(),
+              await httpsCallable(functions, "saveSentencePractice")({
+                schoolId, program, setId, task, no, action: "custom", en: en.trim(), ko: ko.trim(),
               });
             } catch (e) {
               toast("저장하지 못했어요: " + (e as Error).message);
             } finally {
+              submitting.current = false;
               setBusy(false);
             }
           }}

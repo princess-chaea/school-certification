@@ -115,16 +115,7 @@ service cloud.firestore {
         allow get, list: if (isStudent() && resource.data.sid == mySid())
           || canManage(resource.data.grade, resource.data.classNo, resource.data.program);
 
-        // 학생 제출은 항상 '확인 대기(pending)'로 들어가고, 자동 인정 항목은 Cloud Functions 가 바로 인정한다
-        allow create: if isStudent()
-          && request.resource.data.sid == mySid()
-          && request.resource.data.year == currentYear()
-          && request.resource.data.source == 'student'
-          && request.resource.data.status == 'pending'
-          && request.resource.data.count == 1
-          && request.resource.data.program is string && request.resource.data.program.size() <= 40
-          && request.resource.data.grade == studentDoc().grade
-          && request.resource.data.classNo == studentDoc().classNo;
+        // 학생 제출은 submitEvidence callable만 생성한다. 서버가 명단·증빙·속도·중복을 검증한다.
 
         // 교사 일괄 체크(태블릿 없는 학생 관찰 기록)
         allow create: if isStaff()
@@ -146,23 +137,10 @@ service cloud.firestore {
         allow get, list: if (isStudent() && resource.data.sid == mySid())
           || canManage(resource.data.grade, resource.data.classNo, resource.data.program);
 
-        allow create: if isStudent()
-          && request.resource.data.sid == mySid()
-          && request.resource.data.year == currentYear()
-          && id == string(currentYear()) + '_' + mySid() + '_' + request.resource.data.setId + '_' + string(request.resource.data.no)
-          && request.resource.data.grade == studentDoc().grade
-          && request.resource.data.classNo == studentDoc().classNo
-          && request.resource.data.program is string
-          && request.resource.data.status in ['practicing', 'ready', 'requested']
-          && !('checkedBy' in request.resource.data);
-
-        allow update: if (isStudent() && resource.data.sid == mySid()
-            && resource.data.status != 'checked'
-            && request.resource.data.status in ['practicing', 'ready', 'requested']
-            && onlyChanges(['rounds', 'status', 'custom', 'requestedAt', 'updatedAt']))
-          || (canManage(resource.data.grade, resource.data.classNo, resource.data.program)
+        // 학생 연습 저장·검사 요청은 saveSentencePractice callable에서 검증한다.
+        allow update: if canManage(resource.data.grade, resource.data.classNo, resource.data.program)
             && request.resource.data.status in ['checked', 'retry', 'requested']
-            && onlyChanges(['status', 'checkedBy', 'checkedByName', 'checkedAt', 'teacherNote', 'updatedAt']));
+            && onlyChanges(['status', 'checkedBy', 'checkedByName', 'checkedAt', 'teacherNote', 'updatedAt']);
         allow delete: if isAdmin();
       }
 
@@ -184,6 +162,10 @@ service cloud.firestore {
       match /aiUsage/{docId} {
         allow read: if isAdmin();
         allow write: if false;
+      }
+      match /aiJobs/{docId} {
+        allow get: if canManage(resource.data.grade, resource.data.classNo, resource.data.program);
+        allow list, write: if false;
       }
     }
 

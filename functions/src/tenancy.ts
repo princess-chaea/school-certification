@@ -139,79 +139,114 @@ function staffDraft(input: JoinInput, email: string) {
   return out;
 }
 
-async function hasActiveAdmin(schoolId: string) {
-  const snap = await db.collection(sp(schoolId, "staff")).where("role", "==", "admin").where("status", "==", "active").limit(1).get();
-  return !snap.empty;
-}
-
-/**
- * 대비책: 학교 담당자가 한 명도 없을 때 승인된 교사가 [내 역할]에서 담당자를 맡음
- * check: true 이면 담당자가 있는지만 알려 줌
- */
+/** 원래 학교 개설자만 관리자가 사라진 학교를 복구할 수 있다. */
 export const claimAdmin = onCall({ region: REGION }, async (req) => {
   if (!req.auth) throw new HttpsError("unauthenticated", "로그인이 필요해요.");
   const { schoolId, check } = (req.data ?? {}) as { schoolId?: string; check?: boolean };
   if (!schoolId || !/^[A-Za-z0-9_-]{2,40}$/.test(schoolId)) throw new HttpsError("invalid-argument", "학교를 선택하세요.");
-  const ref = db.doc(sp(schoolId, `staff/${req.auth.uid}`));
-  const me = await ref.get();
-  if (!me.exists || me.get("status") !== "active") throw new HttpsError("permission-denied", "승인된 교사만 할 수 있어요.");
-  const has = await hasActiveAdmin(schoolId);
-  if (check) return { hasAdmin: has };
-  if (has) throw new HttpsError("failed-precondition", "이미 학교 담당자가 있어요. 담당자에게 지정을 요청하세요.");
-  await ref.update({ role: "admin", updatedAt: FieldValue.serverTimestamp() });
-  return { hasAdmin: true, claimed: true };
+  const uid = req.auth.uid;
+  const ref = db.doc(sp(schoolId, `staff/${uid}`));
+  return db.runTransaction(async (tx) => {
+    const school = await tx.get(db.doc(sp(schoolId)));
+    const me = await tx.get(ref);
+    if (!school.exists || school.get("status") !== "active" || !me.exists || me.get("status") !== "active") {
+      throw new HttpsError("permission-denied", "승인된 교사만 할 수 있어요.");
+    }
+    const admins = await tx.get(db.collection(sp(schoolId, "staff")).where("role", "==", "admin").where("status", "==", "active").limit(1));
+    const hasAdmin = !admins.empty;
+    const canClaim = school.get("createdBy") === uid && !hasAdmin;
+    if (check) return { hasAdmin, canClaim };
+    if (!canClaim) throw new HttpsError("permission-denied", "최초 학교 개설자만 담당자를 복구할 수 있어요. 학교 담당자나 플랫폼 운영자에게 요청하세요.");
+    tx.update(ref, { role: "admin", updatedAt: FieldValue.serverTimestamp() });
+    return { hasAdmin: true, canClaim: false, claimed: true };
+  });
 });
 
+/** 클라이언트가 보낸 학교를 NEIS에서 코드로 재조회하여 공식 정보만 저장한다. */
+async function verifyNewSchool(neis: NeisSchool): Promise<NeisSchool> {
+  let schools: NeisSchool[];
+  if (process.env.FUNCTIONS_EMULATOR === "true") {
+    schools = EMULATOR_SCHOOLS;
+  } else {
+    const url = new URL("https://open.neis.go.kr/hub/schoolInfo");
+    url.searchParams.set("KEY", NEIS_API_KEY.value());
+    url.searchParams.set("Type", "json");
+    url.searchParams.set("pSize", "10");
+    url.searchParams.set("SD_SCHUL_CODE", neis.schoolCode);
+    try {
+      const res = await fetch(url, { signal: AbortSignal.timeout(10_000) });
+      if (!res.ok) throw new Error(`NEIS HTTP ${res.status}`);
+      schools = parseNeisSchoolInfo(await res.json());
+    } catch {
+      // 요청 URL에 인증키가 있으므로 원본 오류를 로그에 남기지 않는다.
+      throw new HttpsError("unavailable", "NEIS 학교 정보를 확인하지 못했어요. 잠시 후 다시 시도하세요.");
+    }
+  }
+  const verified = schools.find((s) => s.schoolCode === neis.schoolCode && s.name === neis.name && s.atptCode === neis.atptCode);
+  if (!verified) throw new HttpsError("invalid-argument", "학교 정보가 NEIS와 일치하지 않아요. 학교를 다시 검색해 주세요.");
+  return Object.fromEntries(Object.entries(verified).filter(([, v]) => v !== undefined)) as unknown as NeisSchool;
+}
+
 /**
- * 교사·학교 담당자 가입 (역할은 겹쳐서 선택 가능)
- * - 학교 가입 방식(joinPolicy)이 'open'(기본)이면 바로 사용, 'approval'이면 학교 담당자 승인 대기
- * - 아직 없는 학교는 그 자리에서 개설되고, 신청자가 학교 담당자가 된다
+ * open 학교는 검증된 Google 계정의 교사 가입을 즉시 허용한다.
+ * 기존 학교의 관리자 지정은 해당 학교 관리자에게만 맡긴다.
+ * 신규 학교는 개설자만 관리자이며 유료 AI는 플랫폼 승인 전까지 사용하지 않는다.
  */
-export const requestJoin = onCall({ region: REGION }, async (req) => {
+export const requestJoin = onCall({ region: REGION, secrets: [NEIS_API_KEY] }, async (req) => {
   if (!req.auth) throw new HttpsError("unauthenticated", "로그인이 필요해요.");
+  const email = String(req.auth.token.email ?? "").toLowerCase();
+  if (!email || req.auth.token.email_verified !== true || req.auth.token.firebase?.sign_in_provider !== "google.com") {
+    throw new HttpsError("permission-denied", "이메일이 확인된 Google 계정으로 로그인해 주세요.");
+  }
   const input = req.data as JoinInput;
   const neis = input?.neis;
   if (!neis?.schoolCode || !neis?.name || !/^[A-Za-z0-9_-]{2,40}$/.test(neis.schoolCode)) throw new HttpsError("invalid-argument", "학교를 선택하세요.");
-  const email = String(req.auth.token.email ?? "").toLowerCase();
   const uid = req.auth.uid;
   const schoolId = neis.schoolCode;
   const draft = staffDraft(input, email);
   const schoolRef = db.doc(sp(schoolId));
-  const school = await schoolRef.get();
-  let created = false;
-  if (!school.exists) {
-    await schoolRef.set({
-      name: neis.name, shortName: shortSchoolName(neis.name), principalName: "", studentDomain: "", year: SCHOOL_YEAR,
-      logoUrl: "", sealUrl: "", neis: { ...neis }, status: "active", joinPolicy: "open", createdBy: uid, createdAt: FieldValue.serverTimestamp(),
-    });
-    created = true;
-  }
-  const policy = created ? "open" : (school.get("joinPolicy") ?? "open");
+  const userRef = db.doc(`users/${uid}`);
+  const studentRef = db.doc(`studentIndex/${email}`);
+  // 외부 조회 전에 이미 소속된 계정을 거절하고, 트랜잭션에서 다시 검사한다.
+  const [school, user, student] = await Promise.all([schoolRef.get(), userRef.get(), studentRef.get()]);
+  if (student.exists) throw new HttpsError("permission-denied", "학생 계정으로 교사 가입을 할 수 없어요.");
+  if (user.get("schoolId") && user.get("schoolId") !== schoolId) throw new HttpsError("failed-precondition", "이미 다른 학교에 소속되어 있어요. 플랫폼 운영자에게 소속 변경을 요청하세요.");
+  const verified = school.exists ? null : await verifyNewSchool(neis);
   const ref = db.doc(sp(schoolId, `staff/${uid}`));
-  const cur = await ref.get();
-  const keepAdmin = cur.exists && cur.get("role") === "admin" && cur.get("status") === "active";
-  const wantsAdmin = Boolean(input.admin) || created;
-  // 대비책: 학교 담당자가 한 명도 없으면 담당자를 신청한 교사가 바로 담당자 (승인해 줄 사람이 없으므로)
-  const noAdmin = !created && !(await hasActiveAdmin(schoolId));
-  const claim = wantsAdmin && noAdmin;
-  const active = policy === "open" || claim || (cur.exists && cur.get("status") === "active");
-  await ref.set(
-    {
-      ...draft,
-      role: keepAdmin || claim || (wantsAdmin && (policy === "open" || created)) ? "admin" : "teacher",
-      requestedAdmin: wantsAdmin,
+  return db.runTransaction(async (tx) => {
+    const currentSchool = await tx.get(schoolRef);
+    const currentUser = await tx.get(userRef);
+    const currentStudent = await tx.get(studentRef);
+    const cur = await tx.get(ref);
+    if (currentStudent.exists) throw new HttpsError("permission-denied", "학생 계정으로 교사 가입을 할 수 없어요.");
+    if (currentUser.get("schoolId") && currentUser.get("schoolId") !== schoolId) throw new HttpsError("failed-precondition", "이미 다른 학교에 소속되어 있어요. 플랫폼 운영자에게 소속 변경을 요청하세요.");
+    const created = !currentSchool.exists;
+    if (!created && currentSchool.get("status") !== "active") throw new HttpsError("failed-precondition", "현재 가입할 수 없는 학교예요. 플랫폼 운영자에게 문의하세요.");
+    if (created && !verified) throw new HttpsError("aborted", "학교 정보가 변경되었어요. 다시 검색해 주세요.");
+    if (cur.exists && cur.get("status") === "rejected") throw new HttpsError("permission-denied", "가입이 거절된 계정이에요. 학교 담당자에게 문의하세요.");
+    const policy = created ? "open" : (currentSchool.get("joinPolicy") ?? "open");
+    const keepAdmin = cur.exists && cur.get("role") === "admin" && cur.get("status") === "active";
+    const active = policy === "open" || (cur.exists && cur.get("status") === "active");
+    if (created && verified) {
+      tx.create(schoolRef, {
+        name: verified.name, shortName: shortSchoolName(verified.name), principalName: "", studentDomain: "", year: SCHOOL_YEAR,
+        logoUrl: "", sealUrl: "", neis: verified, status: "active", joinPolicy: "open", createdBy: uid,
+        aiReviewEnabled: false, createdAt: FieldValue.serverTimestamp(),
+      });
+    }
+    tx.set(ref, {
+      ...draft, role: created || keepAdmin ? "admin" : "teacher",
+      requestedAdmin: Boolean(input.admin) || created,
       status: active ? "active" : "pending",
-      createdAt: cur.get("createdAt") ?? FieldValue.serverTimestamp(),
-      updatedAt: FieldValue.serverTimestamp(),
-    },
-    { merge: true },
-  );
-  await db.doc(`users/${uid}`).set({ schoolId, email, updatedAt: FieldValue.serverTimestamp() }, { merge: true });
-  return { status: active ? "active" : "pending", schoolId, created };
+      createdAt: cur.get("createdAt") ?? FieldValue.serverTimestamp(), updatedAt: FieldValue.serverTimestamp(),
+    }, { merge: true });
+    tx.set(userRef, { schoolId, email, updatedAt: FieldValue.serverTimestamp() }, { merge: true });
+    return { status: active ? "active" : "pending", schoolId, created };
+  });
 });
 
 /** 운영자: 학교 개설 승인 → 학교 생성 + 신청 교사를 그 학교 관리자로 */
-export const approveSchoolRequest = onCall({ region: REGION }, async (req) => {
+export const approveSchoolRequest = onCall({ region: REGION, secrets: [NEIS_API_KEY] }, async (req) => {
   await requireSuper(req);
   const { id, approve } = req.data as { id?: string; approve?: boolean };
   if (!id) throw new HttpsError("invalid-argument", "신청을 선택하세요.");
@@ -224,25 +259,27 @@ export const approveSchoolRequest = onCall({ region: REGION }, async (req) => {
     return { ok: true };
   }
   const schoolRef = db.doc(sp(r.schoolId));
-  const existing = await schoolRef.get();
-  if (!existing.exists) {
-    await schoolRef.set({
-      name: r.neis.name,
-      shortName: shortSchoolName(r.neis.name),
-      principalName: "",
-      studentDomain: "",
-      year: SCHOOL_YEAR,
-      logoUrl: "",
-      sealUrl: "",
-      neis: r.neis,
-      status: "active",
-      createdAt: FieldValue.serverTimestamp(),
-    });
-  } else if (existing.get("status") !== "active") {
-    await schoolRef.update({ status: "active" });
-  }
-  await db.doc(sp(r.schoolId, `staff/${r.uid}`)).set({ ...r.staff, role: "admin", status: "active", createdAt: FieldValue.serverTimestamp() });
-  await db.doc(`users/${r.uid}`).set({ schoolId: r.schoolId, email: r.email }, { merge: true });
-  await ref.update({ status: "approved", decidedAt: FieldValue.serverTimestamp() });
+  const verified = (await schoolRef.get()).exists ? null : await verifyNewSchool(r.neis);
+  const userRef = db.doc(`users/${r.uid}`);
+  await db.runTransaction(async (tx) => {
+    const request = await tx.get(ref);
+    const existing = await tx.get(schoolRef);
+    const user = await tx.get(userRef);
+    if (request.get("status") !== "pending") throw new HttpsError("failed-precondition", "이미 처리된 신청이에요.");
+    if (user.get("schoolId") && user.get("schoolId") !== r.schoolId) throw new HttpsError("failed-precondition", "신청자가 이미 다른 학교에 소속되어 있어요.");
+    if (!existing.exists) {
+      if (!verified || verified.schoolCode !== r.schoolId) throw new HttpsError("aborted", "학교 정보를 다시 확인해 주세요.");
+      tx.create(schoolRef, {
+        name: verified.name, shortName: shortSchoolName(verified.name), principalName: "", studentDomain: "", year: SCHOOL_YEAR,
+        logoUrl: "", sealUrl: "", neis: verified, status: "active", createdBy: r.uid,
+        aiReviewEnabled: false, createdAt: FieldValue.serverTimestamp(),
+      });
+    } else if (existing.get("status") !== "active") {
+      tx.update(schoolRef, { status: "active" });
+    }
+    tx.set(db.doc(sp(r.schoolId, `staff/${r.uid}`)), { ...r.staff, role: "admin", status: "active", createdAt: FieldValue.serverTimestamp() });
+    tx.set(userRef, { schoolId: r.schoolId, email: r.email }, { merge: true });
+    tx.update(ref, { status: "approved", decidedAt: FieldValue.serverTimestamp() });
+  });
   return { ok: true, schoolId: r.schoolId };
 });

@@ -6,17 +6,26 @@ service firebase.storage {
   match /b/{bucket}/o {
     function signedIn() { return request.auth != null; }
 
-    match /schools/{schoolId}/uploads/{sid}/{allPaths=**} {
+    match /schools/{schoolId}/uploads/{sid}/{program}/{file} {
       function staffPath() { return /databases/(default)/documents/schools/$(schoolId)/staff/$(request.auth.uid); }
       allow read: if (signedIn() && request.auth.token.email.lower() == sid)
         || (signedIn() && firestore.exists(staffPath()) && firestore.get(staffPath()).data.status == 'active');
-      allow create, update: if signedIn()
-        && request.auth.token.email_verified == true
-        && request.auth.token.email.lower() == sid
-        && firestore.exists(/databases/(default)/documents/schools/$(schoolId)/students/$(sid))
-        && request.resource.size < 12 * 1024 * 1024
-        && (request.resource.contentType.matches('image/.*') || request.resource.contentType.matches('audio/.*'));
-      allow delete: if false;
+      function ticketUpload() {
+        let ticket = firestore.get(/databases/(default)/documents/schools/$(schoolId)/uploadTickets/$(file)).data;
+        return ticket.uid == request.auth.uid && ticket.sid == sid && ticket.program == program
+          && ticket.path == 'schools/' + schoolId + '/uploads/' + sid + '/' + program + '/' + file
+          && request.time < ticket.expiresAt
+          && request.resource.size > 0 && request.resource.size <= ticket.maxBytes
+          && request.resource.contentType == ticket.contentType;
+      }
+      function registeredStudent() {
+        return signedIn() && request.auth.token.email_verified == true && request.auth.token.email.lower() == sid
+          && firestore.get(/databases/(default)/documents/schools/$(schoolId)/students/$(sid)).data.active == true;
+      }
+      // 사진·파일·회차별 문장 녹음 모두 서버가 발급한 한 경로에 한 번만 생성.
+      // 기존 경로의 녹음은 계속 읽을 수 있다.
+      allow create: if registeredStudent() && ticketUpload();
+      allow update, delete: if false;
     }
 
     match /schools/{schoolId}/assets/{file} {

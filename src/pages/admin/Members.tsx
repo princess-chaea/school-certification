@@ -29,6 +29,16 @@ function download(name: string, text: string, type = "text/csv;charset=utf-8") {
   setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
 
+type AssignmentDuty = "all" | "homeroom" | "subject";
+
+export function matchesStaffAssignmentFilter(staff: StaffDoc, duty: AssignmentDuty, grade: number | "all") {
+  const homeroomMatches = Boolean(staff.homeroom && (grade === "all" || staff.grade === grade));
+  const subjectMatches = Boolean(staff.subject && (grade === "all" || (staff.grades?.includes(grade) && (!staff.subjectClasses?.length || staff.subjectClasses.some((item) => item.grade === grade && item.classNo > 0)))));
+  if (duty === "homeroom") return homeroomMatches;
+  if (duty === "subject") return subjectMatches;
+  return grade === "all" || homeroomMatches || subjectMatches;
+}
+
 export function Members() {
   const [tab, setTab] = useState<"admins" | "teachers" | "roster" | "students">("teachers");
   return (
@@ -52,7 +62,9 @@ export function StaffManager({ role }: { role: StaffDoc["role"] }) {
   const schoolId = useSchoolId();
   const { rows } = useCollection<StaffDoc & { id: string }>(sp(schoolId, "staff"), [], [schoolId]);
   const allStaff = (rows ?? []).slice().sort((a, b) => (a.status === "pending" ? -1 : 0) - (b.status === "pending" ? -1 : 0) || (a.grade ?? 9) - (b.grade ?? 9) || (a.classNo ?? 0) - (b.classNo ?? 0));
-  const list = role === "admin" ? allStaff.filter((s) => s.role === "admin") : allStaff;
+  const [dutyFilter, setDutyFilter] = useState<AssignmentDuty>("all");
+  const [gradeFilter, setGradeFilter] = useState<number | "all">("all");
+  const list = role === "admin" ? allStaff.filter((s) => s.role === "admin") : allStaff.filter((s) => matchesStaffAssignmentFilter(s, dutyFilter, gradeFilter));
   const [selected, setSelected] = useState<string[]>([]);
   const [busy, setBusy] = useState(false);
   const [editing, setEditing] = useState<(StaffDoc & { id: string }) | null>(null);
@@ -67,8 +79,10 @@ export function StaffManager({ role }: { role: StaffDoc["role"] }) {
   const chosenPrograms = selectedPrograms.filter((id) => enabledPrograms.some((p) => p.id === id));
   const assignment = (s: StaffDoc) => {
     const grades = [...new Set(s.grades ?? [])].sort((a, b) => a - b);
-    const classes = (s.subjectClasses ?? []).slice().sort((a, b) => a.grade - b.grade || a.classNo - b.classNo);
-    const subjectLabel = `${grades.join("·")}학년${classes.length ? ` (${classes.map((c) => `${c.grade}-${c.classNo}`).join("·")}반)` : " 전체"}`;
+    const restricted = Boolean(s.subjectClasses?.length);
+    const classes = (s.subjectClasses ?? []).filter((c) => grades.includes(c.grade) && c.classNo > 0).sort((a, b) => a.grade - b.grade || a.classNo - b.classNo);
+    const assignedGrades = restricted ? grades.filter((grade) => classes.some((c) => c.grade === grade)) : grades;
+    const subjectLabel = assignedGrades.length ? `${assignedGrades.join("·")}학년${restricted ? ` (${classes.map((c) => `${c.grade}-${c.classNo}`).join("·")}반)` : " 전체"}` : "담당 학년 미지정";
     const firstLine = [s.homeroom && `담임 ${s.grade}학년 ${s.classNo}반`, s.subject && `전담 ${subjectLabel}`].filter(Boolean).join(" · ");
     const ids = [...new Set([...(s.homeroom && s.grade ? activePrograms(config, s.grade).map((p) => p.id) : []), ...(s.subject ? s.programs ?? [] : [])])];
     const leads = s.certificationPrograms ?? [];
@@ -144,16 +158,25 @@ export function StaffManager({ role }: { role: StaffDoc["role"] }) {
   return (
     <div className="stack">
       {role === "teacher" && <div className="card flat stack">
+        <div className="row member-filter-controls">
+          <label className="field member-filter-field"><span>담당 유형</span><select className="input sm" value={dutyFilter} disabled={busy} onChange={(e) => { setDutyFilter(e.target.value as AssignmentDuty); setSelected([]); }}>
+            <option value="all">전체</option><option value="homeroom">담임</option><option value="subject">전담</option>
+          </select></label>
+          <label className="field member-filter-field"><span>담당 학년</span><select className="input sm" value={gradeFilter} disabled={busy} onChange={(e) => { setGradeFilter(e.target.value === "all" ? "all" : Number(e.target.value)); setSelected([]); }}>
+            <option value="all">전체 학년</option>{GRADES.map((grade) => <option key={grade} value={grade}>{grade}학년</option>)}
+          </select></label>
+          <span className="small muted member-filter-result">표시 {list.length}명 / 전체 {allStaff.length}명</span>
+        </div>
         <p className="small" style={{ margin: 0 }}>담임·전담·인증 업무 담당은 겸임할 수 있어요. 일괄 인정 권한은 별도로 부여하며, 권한을 회수해도 이미 인정한 기록은 유지돼요.</p>
         <div className="row member-bulk-controls">
-          <label className="row small"><input type="checkbox" aria-label="승인된 교사 모두 선택" disabled={busy || !eligible.length} checked={eligible.length > 0 && selectedStaff.length === eligible.length} onChange={(e) => setSelected(e.target.checked ? eligible.map((s) => s.id) : [])} /> 승인된 교사 모두 선택 ({selectedStaff.length}/{eligible.length})</label>
+          <label className="row small"><input type="checkbox" aria-label="표시된 승인 교사 모두 선택" disabled={busy || !eligible.length} checked={eligible.length > 0 && selectedStaff.length === eligible.length} onChange={(e) => setSelected(e.target.checked ? eligible.map((s) => s.id) : [])} /> 표시된 승인 교사 모두 선택 ({selectedStaff.length}/{eligible.length})</label>
           <button className="btn sm" disabled={busy || !selectedStaff.length} onClick={() => openGrant(selectedStaff.map((s) => s.id))}>선택 {selectedStaff.length}명 권한 변경</button>
         </div>
       </div>}
       {role === "admin" && <p className="small muted" style={{ margin: 0 }}>관리자는 학교 전체 현황과 구성원·인증 항목·설정을 관리할 수 있어요. 교사 업무는 교사 탭에서 확인해요.</p>}
       {pending.length > 0 && <div className="chip warn" style={{ alignSelf: "flex-start" }}>승인 대기 {pending.length}명</div>}
       {rows === null && <div className="muted">불러오는 중…</div>}
-      {rows !== null && list.length === 0 && <Empty>등록된 {role === "admin" ? "관리자" : "교사"}가 없어요.</Empty>}
+      {rows !== null && list.length === 0 && <Empty>{role === "teacher" && allStaff.length > 0 ? "선택한 조건에 맞는 교사가 없어요." : `등록된 ${role === "admin" ? "관리자" : "교사"}가 없어요.`}</Empty>}
       <div className="table-wrap members-table-wrap">
         <table className={`table members-table members-table--${role}`}>
           <thead><tr>{role === "teacher" && <th>선택</th>}<th>이름</th>{role === "teacher" && <th>담당</th>}<th>이메일</th><th>상태</th><th>{role === "teacher" ? "일괄 인정 권한" : "권한"}</th><th>관리</th></tr></thead>

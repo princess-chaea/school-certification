@@ -1,4 +1,5 @@
 import Anthropic from "@anthropic-ai/sdk";
+import { createHash } from "node:crypto";
 import { zodOutputFormat } from "@anthropic-ai/sdk/helpers/zod";
 import { z } from "zod";
 import { getStorage } from "firebase-admin/storage";
@@ -17,19 +18,83 @@ function client() {
   return new Anthropic({
     apiKey: ANTHROPIC_API_KEY.value(),
     defaultHeaders: { "anthropic-workspace-id": ANTHROPIC_WORKSPACE_ID.value() },
+    // Automatic retries can spend another request after a timeout whose result is unknown.
+    maxRetries: 0,
   });
 }
 
-/** 하루 AI 호출 상한 확인 + 사용량 기록. 상한을 넘으면 false */
-async function reserveUsage(schoolId: string, kind: string, limit: number): Promise<boolean> {
-  const ref = db.doc(sp(schoolId, `aiUsage/${todayKey()}`));
+// These are server hard ceilings. Students can keep submitting records after an AI ceiling;
+// teachers review those records directly. 30 first-day records fit below the student ceilings.
+const STUDENT_AI_PER_10_MIN = 40;
+const STUDENT_AI_PER_DAY = 60;
+const SCHOOL_AI_PER_DAY = 3000;
+const PLATFORM_AI_PER_DAY = 3000;
+const PLATFORM_AI_PER_MONTH = 50000;
+const MAX_AI_PHOTO_BYTES = 5 * 1024 * 1024;
+
+type Reservation =
+  | { status: "reserved" | "duplicate" }
+  | { status: "skipped"; category: string; reason: string };
+
+/** One transaction reserves the submission and every cost ceiling before the paid request. */
+async function reserveUsage(schoolId: string, data: FirebaseFirestore.DocumentData, id: string, kind: "photo" | "text", configuredLimit: number): Promise<Reservation> {
+  const day = todayKey();
+  const month = day.slice(0, 7);
+  const window = Math.floor(Date.now() / 600_000);
+  const studentKey = createHash("sha256").update(String(data.sid)).digest("hex").slice(0, 24);
+  const scope = { sid: data.sid, year: data.year, grade: data.grade, classNo: data.classNo, program: data.program };
+  const job = db.doc(sp(schoolId, `aiJobs/${id}`));
+  const school = db.doc(sp(schoolId, `aiUsage/${day}`));
+  const studentDay = db.doc(sp(schoolId, `aiUsage/student_${studentKey}_${day}`));
+  const studentWindow = db.doc(sp(schoolId, `aiUsage/window_${studentKey}_${window}`));
+  const platformDay = db.doc(`platformAiUsage/${day}`);
+  const platformMonth = db.doc(`platformAiUsage/${month}`);
+  const refs = [job, school, studentDay, studentWindow, platformDay, platformMonth];
+  const schoolLimit = Number.isFinite(configuredLimit) ? Math.min(SCHOOL_AI_PER_DAY, Math.max(0, Math.floor(configuredLimit))) : SCHOOL_AI_PER_DAY;
+
   return db.runTransaction(async (tx) => {
-    const snap = await tx.get(ref);
-    const total = Number(snap.get("total") ?? 0);
-    if (total >= limit) return false;
-    tx.set(ref, { total: FieldValue.increment(1), [kind]: FieldValue.increment(1), date: todayKey() }, { merge: true });
-    return true;
+    const [jobSnap, schoolSnap, studentDaySnap, studentWindowSnap, platformDaySnap, platformMonthSnap] = await Promise.all(refs.map((ref) => tx.get(ref)));
+    if (jobSnap.exists) return { status: "duplicate" };
+    const used = (snap: FirebaseFirestore.DocumentSnapshot) => Number(snap.get("total") ?? 0);
+    const blocked = [
+      { used: used(studentWindowSnap), limit: STUDENT_AI_PER_10_MIN, category: "student_burst", reason: "짧은 시간에 올린 기록이 많아 자동 확인을 건너뛰었어요. 선생님이 직접 확인해 주세요." },
+      { used: used(studentDaySnap), limit: STUDENT_AI_PER_DAY, category: "student_daily", reason: "오늘 학생별 자동 확인 범위를 넘어 선생님이 직접 확인해 주세요." },
+      { used: used(schoolSnap), limit: schoolLimit, category: "school_daily", reason: "오늘 학교의 자동 확인 범위를 넘어 선생님이 직접 확인해 주세요." },
+      { used: used(platformDaySnap), limit: PLATFORM_AI_PER_DAY, category: "platform_daily", reason: "오늘 자동 확인 서비스의 전체 이용 범위를 넘어 선생님이 직접 확인해 주세요." },
+      { used: used(platformMonthSnap), limit: PLATFORM_AI_PER_MONTH, category: "platform_monthly", reason: "이번 달 자동 확인 서비스의 전체 이용 범위를 넘어 선생님이 직접 확인해 주세요." },
+    ].find((item) => item.used >= item.limit);
+    if (blocked) {
+      tx.create(job, { ...scope, state: "skipped", kind, category: blocked.category, reason: blocked.reason, at: FieldValue.serverTimestamp() });
+      return { status: "skipped", category: blocked.category, reason: blocked.reason };
+    }
+    tx.create(job, { ...scope, state: "reserved", kind, reason: "AI 1차 확인이 진행 중이에요.", at: FieldValue.serverTimestamp() });
+    tx.set(school, { total: FieldValue.increment(1), [kind]: FieldValue.increment(1), date: day }, { merge: true });
+    for (const ref of [studentDay, studentWindow, platformDay, platformMonth]) {
+      tx.set(ref, { total: FieldValue.increment(1), updatedAt: FieldValue.serverTimestamp() }, { merge: true });
+    }
+    return { status: "reserved" };
   });
+}
+
+async function reserveOrMarkForTeacher(schoolId: string, data: FirebaseFirestore.DocumentData, id: string, kind: "photo" | "text", limit: number) {
+  const result = await reserveUsage(schoolId, data, id, kind, limit);
+  if (result.status === "skipped") {
+    await saveReview(schoolId, id, data, { verdict: "check", reason: result.reason, errorCategory: result.category });
+    logger.warn("AI budget reached", { schoolId, id, category: result.category });
+  }
+  return result.status === "reserved";
+}
+
+async function finishJob(schoolId: string, id: string, state: "completed" | "failed") {
+  try {
+    await db.doc(sp(schoolId, `aiJobs/${id}`)).update({
+      state,
+      reason: state === "failed" ? "자동 확인 결과를 저장하지 못했어요. 선생님이 직접 확인해 주세요." : FieldValue.delete(),
+      finishedAt: FieldValue.serverTimestamp(),
+    });
+  } catch (err) {
+    logger.error("AI job state update failed", { id, err: String(err) });
+  }
 }
 
 async function recordTokens(schoolId: string, usage: { input_tokens?: number; output_tokens?: number } | undefined, model: string) {
@@ -97,11 +162,19 @@ export const onSubmissionCreated = onDocumentCreated(
     const data = snap.data();
     if (data.source !== "student" || data.isDemo) return;
     const schoolId = event.params.schoolId;
+    // Old clients may still write directly for a short rollout period. Those records remain
+    // pending for the teacher; only the server submission gate may spend AI budget or auto-approve.
+    if (data.serverValidated !== true) {
+      await saveReview(schoolId, snap.id, data, {
+        verdict: "check", reason: "서버 검증 전 제출된 기록이에요. 선생님이 직접 확인해 주세요.", errorCategory: "unverified_submission",
+      });
+      return;
+    }
     const config = await loadConfig(schoolId);
     const program = config.programs.find((p) => p.id === data.program);
     const task = program?.tasks?.find((t) => t.id === data.task);
-    if (!program) {
-      await snap.ref.update({ status: "deleted", deleteReason: "없는 인증 항목" });
+    if (!program || !program.enabled || !program.grades.includes(Number(data.grade)) || (data.task && (!task || task.kind !== "evidence"))) {
+      await snap.ref.update({ status: "deleted", deleteReason: "사용할 수 없는 인증 항목·과제" });
       return;
     }
 
@@ -112,14 +185,29 @@ export const onSubmissionCreated = onDocumentCreated(
       if (data.text && String(data.text).trim().length >= 2) await reviewText(schoolId, config, program, task, data, snap.id);
       return;
     }
-    if (!(await reserveUsage(schoolId, "photo", config.ai.dailyLimit))) {
-      logger.warn("AI daily limit reached");
+    const path = String(data.photoPath);
+    const photoPrefix = `schools/${schoolId}/uploads/${data.sid}/${program.id}/`;
+    if (!path.startsWith(photoPrefix) || !/^[^/]+\.jpg$/.test(path.slice(photoPrefix.length)) || data.photoType !== "image/jpeg") {
+      await saveReview(schoolId, snap.id, data, {
+        verdict: "check", reason: "사진의 업로드 경로 또는 형식을 확인할 수 없어 선생님이 직접 확인해 주세요.", errorCategory: "invalid_photo_reference",
+      });
       return;
     }
     let errorPhase: "photo_download" | "ai_request_or_parse" | "review_save" = "photo_download";
+    let reserved = false;
+    let completed = false;
     try {
-      const [buf] = await getStorage().bucket().file(data.photoPath).download();
-      const mediaType = (data.photoType as string) || "image/jpeg";
+      const photoFile = getStorage().bucket().file(path);
+      const [metadata] = await photoFile.getMetadata();
+      if (metadata.contentType !== "image/jpeg" || Number(metadata.size) > MAX_AI_PHOTO_BYTES || Number(metadata.size) <= 0) {
+        await saveReview(schoolId, snap.id, data, {
+          verdict: "check", reason: "사진의 파일 형식이나 크기를 확인할 수 없어 선생님이 직접 확인해 주세요.", errorCategory: "invalid_photo_object",
+        });
+        return;
+      }
+      reserved = await reserveOrMarkForTeacher(schoolId, data, snap.id, "photo", config.ai.dailyLimit);
+      if (!reserved) return;
+      const [buf] = await photoFile.download();
       const model = config.ai.photoModel;
       errorPhase = "ai_request_or_parse";
       const response = await client().messages.parse({
@@ -131,7 +219,7 @@ export const onSubmissionCreated = onDocumentCreated(
           {
             role: "user",
             content: [
-              { type: "image", source: { type: "base64", media_type: mediaType as "image/jpeg", data: buf.toString("base64") } },
+              { type: "image", source: { type: "base64", media_type: "image/jpeg", data: buf.toString("base64") } },
               { type: "text", text: photoPrompt(program, task, data) },
             ],
           },
@@ -149,9 +237,11 @@ export const onSubmissionCreated = onDocumentCreated(
           verdict: "check", reason: "사진의 활동 여부를 자동으로 판단하지 못했어요. 선생님이 확인해 주세요.", model,
           errorPhase: "ai_request_or_parse", errorCategory: response.stop_reason === "refusal" ? "refusal" : "missing_output",
         });
+        completed = true;
         return;
       }
       await saveReview(schoolId, snap.id, data, { ...response.parsed_output, model });
+      completed = true;
     } catch (err) {
       logger.error("photo review failed", { id: event.params.id, errorPhase, err: String(err), stack: err instanceof Error ? err.stack : undefined });
       const reasons = {
@@ -159,9 +249,15 @@ export const onSubmissionCreated = onDocumentCreated(
         ai_request_or_parse: "자동 확인 서비스의 응답을 받거나 해석하지 못했어요. 선생님이 활동을 확인해 주세요.",
         review_save: "자동 확인 결과를 저장하지 못했어요. 선생님이 활동을 확인해 주세요.",
       };
-      await saveReview(schoolId, snap.id, data, {
-        verdict: "check", reason: reasons[errorPhase], errorPhase, errorCategory: `${errorPhase}_failed`,
-      });
+      try {
+        await saveReview(schoolId, snap.id, data, {
+          verdict: "check", reason: reasons[errorPhase], errorPhase, errorCategory: `${errorPhase}_failed`,
+        });
+      } catch (saveError) {
+        logger.error("photo review fallback save failed", { id: event.params.id, err: String(saveError) });
+      }
+    } finally {
+      if (reserved) await finishJob(schoolId, snap.id, completed ? "completed" : "failed");
     }
   },
 );
@@ -170,8 +266,11 @@ const TextReview = z.object({ verdict: z.enum(["ok", "check", "reject"]), reason
 
 /** 사진 없이 글만 올린 기록: 항목과 관련 있는 내용인지 1차 확인 (교사 경고용) */
 async function reviewText(schoolId: string, config: Awaited<ReturnType<typeof loadConfig>>, program: ProgramDef, task: TaskDef | undefined, data: FirebaseFirestore.DocumentData, id: string) {
-  if (!(await reserveUsage(schoolId, "text", config.ai.dailyLimit))) return;
+  let reserved = false;
+  let completed = false;
   try {
+    reserved = await reserveOrMarkForTeacher(schoolId, data, id, "text", config.ai.dailyLimit);
+    if (!reserved) return;
     const model = config.ai.photoModel;
     const response = await client().messages.parse({
       model,
@@ -180,10 +279,26 @@ async function reviewText(schoolId: string, config: Awaited<ReturnType<typeof lo
       system: "초등학교 인증제 활동 기록(글)을 1차로 확인하는 보조 교사입니다. ok=항목과 관련된 성실한 기록, check=짧거나 애매함, reject=관련 없음·의미 없는 글자·복사한 듯한 내용. reason 은 선생님에게 보여 줄 한국어 한 문장.",
       messages: [{ role: "user", content: `[인증 항목] ${program.name}${task ? ` - ${task.name}` : ""}\n[설명] ${task?.description ?? program.description}\n[학생 글]\n${String(data.text).slice(0, 1500)}` }],
     });
-    await recordTokens(schoolId, response.usage, model);
-    if (response.stop_reason === "refusal" || !response.parsed_output) return;
+    try {
+      await recordTokens(schoolId, response.usage, model);
+    } catch (err) {
+      logger.error("text review token accounting failed", { id, err: String(err) });
+    }
+    if (response.stop_reason === "refusal" || !response.parsed_output) {
+      await saveReview(schoolId, id, data, { verdict: "check", reason: "글의 활동 여부를 자동으로 판단하지 못했어요. 선생님이 확인해 주세요.", errorCategory: "missing_output" });
+      completed = true;
+      return;
+    }
     await saveReview(schoolId, id, data, { ...response.parsed_output, model });
+    completed = true;
   } catch (err) {
-    logger.error("text review failed", { err: String(err) });
+    logger.error("text review failed", { id, err: String(err) });
+    try {
+      await saveReview(schoolId, id, data, { verdict: "check", reason: "자동 확인 서비스의 응답을 받지 못했어요. 선생님이 활동을 확인해 주세요.", errorCategory: "ai_request_failed" });
+    } catch (saveError) {
+      logger.error("text review fallback save failed", { id, err: String(saveError) });
+    }
+  } finally {
+    if (reserved) await finishJob(schoolId, id, completed ? "completed" : "failed");
   }
 }

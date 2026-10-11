@@ -1,10 +1,10 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { doc, serverTimestamp, writeBatch } from "firebase/firestore";
-import { db } from "../../firebase";
-import { sp, useSchoolId } from "../../lib/tenant";
+import { httpsCallable } from "firebase/functions";
+import { functions } from "../../firebase";
+import { useSchoolId } from "../../lib/tenant";
 import { useMyEnglishItems, useSentenceSet } from "../../lib/data";
-import { completedRounds, itemId, ROUNDS_REQUIRED } from "../../lib/english";
+import { completedRounds, ROUNDS_REQUIRED } from "../../lib/english";
 import type { EnglishItem, StudentDoc } from "../../lib/types";
 import type { ProgramDef, TaskDef } from "../../../shared/domain";
 import { taskSetIds } from "../../../shared/domain";
@@ -39,6 +39,8 @@ export function SentenceSetPage({ student, program, task }: { student: StudentDo
   const set = useSentenceSet(setId);
   const { rows: items } = useMyEnglishItems(student);
   const ding = useDingOnCheck(items);
+  const requesting = useRef(false);
+  const [busy, setBusy] = useState(false);
   const [selecting, setSelecting] = useState(false);
   const [picked, setPicked] = useState<Set<number>>(new Set());
   const byNo = useMemo(() => new Map((items ?? []).filter((i) => i.setId === setId && i.program === program.id).map((i) => [i.no, i])), [items, setId, program.id]);
@@ -49,12 +51,24 @@ export function SentenceSetPage({ student, program, task }: { student: StudentDo
   const ready = [...byNo.values()].filter((i) => i.status === "ready");
 
   async function requestCheck(nos: number[]) {
-    const batch = writeBatch(db);
-    nos.forEach((no) => batch.update(doc(db, sp(schoolId, `englishItems/${itemId(student.year, student.sid, setId, no)}`)), { status: "requested", requestedAt: serverTimestamp(), updatedAt: serverTimestamp() }));
-    await batch.commit();
-    toast(`${nos.length}문장 검사 요청 완료! 선생님께 말해 주세요`);
-    setSelecting(false);
-    setPicked(new Set());
+    if (requesting.current) return;
+    requesting.current = true;
+    setBusy(true);
+    let completed = 0;
+    try {
+      for (const no of new Set(nos)) {
+        await httpsCallable(functions, "saveSentencePractice")({ schoolId, program: program.id, task: task.id, setId, no, action: "request" });
+        completed++;
+      }
+      toast(`${completed}문장 검사 요청 완료! 선생님께 말해 주세요`);
+      setSelecting(false);
+      setPicked(new Set());
+    } catch (e) {
+      toast(`${completed}문장 요청됨. 나머지는 다시 요청해 주세요: ${(e as Error).message}`);
+    } finally {
+      requesting.current = false;
+      setBusy(false);
+    }
   }
 
   return (
@@ -66,8 +80,8 @@ export function SentenceSetPage({ student, program, task }: { student: StudentDo
         <div className="card px-card row between" style={{ background: "var(--navy-50)", marginBottom: 12 }}>
           <span className="icon-text"><PixelIcon name="hand" size={20} /> 검사 요청할 수 있는 문장 <b>{ready.length}개</b></span>
           <div className="row">
-            <button className="btn" onClick={() => requestCheck(ready.map((i) => i.no))}>모두 검사 요청</button>
-            {selecting && picked.size > 0 && <button className="btn ok" onClick={() => requestCheck([...picked])}>{picked.size}개 요청</button>}
+            <button className="btn" disabled={busy} onClick={() => requestCheck(ready.map((i) => i.no))}>모두 검사 요청</button>
+            {selecting && picked.size > 0 && <button className="btn ok" disabled={busy} onClick={() => requestCheck([...picked])}>{picked.size}개 요청</button>}
             <button className="btn ghost" onClick={() => setSelecting((s) => !s)}>{selecting ? "선택 취소" : "골라서 요청"}</button>
           </div>
         </div>

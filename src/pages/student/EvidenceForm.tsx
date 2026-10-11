@@ -1,8 +1,8 @@
 import { useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { addDoc, collection, serverTimestamp } from "firebase/firestore";
-import { db } from "../../firebase";
-import { sp, useSchoolId } from "../../lib/tenant";
+import { httpsCallable } from "firebase/functions";
+import { functions } from "../../firebase";
+import { useSchoolId } from "../../lib/tenant";
 import { useMySubmissions } from "../../lib/data";
 import { analyzeAudio, imageHash, newId, resizeImage, uploadBlob } from "../../lib/media";
 import { useRecorder } from "../../lib/useRecorder";
@@ -56,6 +56,9 @@ export function EvidenceForm({ student, program, task, backTo }: { student: Stud
   const multi = hasPhoto && !hasAudio && !spec.evidence.includes("file");
   const [drafts, setDrafts] = useState<Draft[]>([emptyDraft()]);
   const [busy, setBusy] = useState(false);
+  const submitting = useRef(false);
+  const uploaded = useRef(new Map<string, Record<string, unknown>>());
+  const uploadedAudio = useRef(new Map<string, Record<string, unknown>>());
   const [progress, setProgress] = useState("");
   const [stamp, setStamp] = useState<string | null>(null);
   const photoRef = useRef<HTMLInputElement>(null);
@@ -78,7 +81,7 @@ export function EvidenceForm({ student, program, task, backTo }: { student: Stud
       const base = ds[idx];
       const next = [...ds];
       if (base.preview) URL.revokeObjectURL(base.preview);
-      next[idx] = { ...base, file: images[0], preview: URL.createObjectURL(images[0]) };
+      next[idx] = { ...base, key: newId(), file: images[0], preview: URL.createObjectURL(images[0]) };
       if (multi) next.splice(idx + 1, 0, ...images.slice(1).map((file) => ({ ...emptyDraft(base.date, base.choice), file, preview: URL.createObjectURL(file) })));
       return next.slice(0, 20);
     });
@@ -106,7 +109,16 @@ export function EvidenceForm({ student, program, task, backTo }: { student: Stud
   });
   const ready = problems.every((x) => !x);
 
+  async function uploadTicket(kind: "photo" | "file" | "audio", contentType: string) {
+    const result = await httpsCallable<Record<string, unknown>, { path: string; maxBytes: number }>(functions, "issueUploadTicket")({
+      schoolId, program: program.id, ...(task ? { task: task.id } : {}), kind, contentType,
+    });
+    return result.data;
+  }
+
   async function submit() {
+    if (submitting.current || !ready) return;
+    submitting.current = true;
     setBusy(true);
     let done = 0;
     let skipped = 0;
@@ -114,14 +126,14 @@ export function EvidenceForm({ student, program, task, backTo }: { student: Stud
       for (const d of drafts) {
         setProgress(`${done + skipped + 1} / ${drafts.length} 올리는 중…`);
         const data: Record<string, unknown> = {
-          sid: student.sid, year: student.year, grade: student.grade, classNo: student.classNo,
-          program: program.id, ...(task ? { task: task.id } : {}),
-          activityDate: d.date, fields: d.fields, status: "pending", source: "student", count: 1, createdAt: serverTimestamp(),
+          schoolId, itemId: d.key, program: program.id, ...(task ? { task: task.id } : {}),
+          activityDate: d.date, fields: d.fields,
         };
         if (d.text.trim()) data.text = d.text.trim().slice(0, 2000);
         if (d.link.trim()) data.link = d.link.trim();
         if (d.choice) data.activityType = d.choice;
-        if (d.file) {
+        const saved = uploaded.current.get(d.key) ?? {};
+        if (d.file && !saved.photoPath) {
           const blob = await resizeImage(d.file);
           const hash = await imageHash(blob);
           if (hashes.has(hash)) {
@@ -129,24 +141,37 @@ export function EvidenceForm({ student, program, task, backTo }: { student: Stud
             continue;
           }
           hashes.add(hash);
-          const path = `schools/${schoolId}/uploads/${student.sid}/${program.id}/${newId()}.jpg`;
-          await uploadBlob(path, blob, "image/jpeg");
-          Object.assign(data, { photoPath: path, photoType: "image/jpeg", hash });
+          const ticket = await uploadTicket("photo", "image/jpeg");
+          if (blob.size > ticket.maxBytes) throw new Error("사진 용량을 줄여서 다시 올려 주세요.");
+          await uploadBlob(ticket.path, blob, "image/jpeg");
+          Object.assign(saved, { photoPath: ticket.path, hash });
+          uploaded.current.set(d.key, saved);
         }
-        if (d.attachment) {
+        if (d.attachment && !saved.filePath) {
           if (d.attachment.size > 10 * 1024 * 1024) throw new Error("파일은 10MB까지 올릴 수 있어요.");
-          const path = `schools/${schoolId}/uploads/${student.sid}/${program.id}/${newId()}-${d.attachment.name.replace(/[^\w.가-힣-]/g, "_")}`;
-          await uploadBlob(path, d.attachment, d.attachment.type || "application/octet-stream");
-          Object.assign(data, { filePath: path, fileName: d.attachment.name });
+          const contentType = d.attachment.type || "application/octet-stream";
+          const ticket = await uploadTicket("file", contentType);
+          if (d.attachment.size > ticket.maxBytes) throw new Error("파일은 10MB까지 올릴 수 있어요.");
+          await uploadBlob(ticket.path, d.attachment, contentType);
+          Object.assign(saved, { filePath: ticket.path, fileName: d.attachment.name });
+          uploaded.current.set(d.key, saved);
         }
+        Object.assign(data, saved);
         if (hasAudio && rec.recording) {
-          const ext = rec.recording.mime.includes("mp4") ? "m4a" : rec.recording.mime.includes("ogg") ? "ogg" : "webm";
-          const path = `schools/${schoolId}/uploads/${student.sid}/${program.id}/${newId()}.${ext}`;
-          await uploadBlob(path, rec.recording.blob, rec.recording.mime);
-          const check = await analyzeAudio(rec.recording.blob);
-          Object.assign(data, { audioPath: path, durationSec: Math.round(rec.recording.durationMs / 1000), ...(check ? { audioCheck: check } : {}) });
+          const audioKey = `${d.key}:${rec.recording.url}`;
+          let audio = uploadedAudio.current.get(audioKey);
+          if (!audio) {
+            const ticket = await uploadTicket("audio", rec.recording.mime);
+            if (rec.recording.blob.size > ticket.maxBytes) throw new Error("녹음 용량이 너무 커요. 짧게 다시 녹음해 주세요.");
+            await uploadBlob(ticket.path, rec.recording.blob, rec.recording.mime);
+            const check = await analyzeAudio(rec.recording.blob);
+            audio = { audioPath: ticket.path, durationSec: Math.round(rec.recording.durationMs / 1000), ...(check ? { audioCheck: check } : {}) };
+            uploadedAudio.current.set(audioKey, audio);
+          }
+          Object.assign(data, audio);
         }
-        await addDoc(collection(db, sp(schoolId, "submissions")), data);
+        const result = await httpsCallable<Record<string, unknown>, { id: string; existing: boolean; duplicate?: boolean }>(functions, "submitEvidence")(data);
+        if (result.data.duplicate) { skipped++; continue; }
         done++;
       }
       drafts.forEach((d) => d.preview && URL.revokeObjectURL(d.preview));
@@ -160,6 +185,7 @@ export function EvidenceForm({ student, program, task, backTo }: { student: Stud
     } catch (e) {
       toast("올리지 못했어요: " + (e as Error).message);
     } finally {
+      submitting.current = false;
       setBusy(false);
       setProgress("");
     }
@@ -170,7 +196,7 @@ export function EvidenceForm({ student, program, task, backTo }: { student: Stud
       {stamp && <Stamp title="QUEST CLEAR!" sub={stamp} onDone={() => { setStamp(null); nav(backTo); }} />}
       <input ref={cameraRef} type="file" accept="image/*" capture="environment" hidden onChange={(e) => { addPhotos(e.target.files); e.target.value = ""; }} />
       <input ref={photoRef} type="file" accept="image/*" multiple={multi} hidden onChange={(e) => { addPhotos(e.target.files); e.target.value = ""; }} />
-      <input ref={fileRef} type="file" hidden onChange={(e) => { const f = e.target.files?.[0]; if (f && target.current) update(target.current, { attachment: f }); e.target.value = ""; }} />
+      <input ref={fileRef} type="file" hidden onChange={(e) => { const f = e.target.files?.[0]; if (f && target.current) update(target.current, { key: newId(), attachment: f }); e.target.value = ""; }} />
       {spec.link && (
         <a className="btn secondary" href={spec.link} target="_blank" rel="noreferrer" style={{ marginBottom: 12 }}>
           <PixelIcon name="link" size={18} /> 활동 사이트 열기

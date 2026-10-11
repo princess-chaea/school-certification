@@ -58,7 +58,11 @@ function EvidenceQueue() {
   const names = useMemo(() => new Map((students ?? []).map((s) => [s.id, `${s.classNo}-${s.number} ${s.name}`])), [students]);
   const list = rows ?? [];
   const [onlyFlag, setOnlyFlag] = useState(false);
-  const ai = useAiReviews(list.map((r) => r.id));
+  const ai = useAiReviews(
+    list.map((r) => r.id),
+    list.filter((r) => config.ai.enabled && r.source === "student" &&
+      (!r.createdAt || r.createdAt.toMillis() > Date.now() - 2 * 60_000)).map((r) => r.id),
+  );
   const flagged = (r: Submission) => Boolean((ai.get(r.id) && ai.get(r.id)!.verdict !== "ok") || (r.audioCheck && r.audioCheck.voicedRatio < 0.3));
   const aiOk = list.filter((r) => ai.get(r.id)?.verdict === "ok" && !flagged(r)).map((r) => r.id);
   const shown = onlyFlag ? list.filter(flagged) : list;

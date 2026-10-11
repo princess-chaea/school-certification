@@ -46,7 +46,11 @@ export function Feed() {
   const { rows: items } = useCollection<EnglishItem>(sp(schoolId, "englishItems"), eCons, [schoolId, school.year, scope.grade, scope.classNo, scope.program, max]);
 
   const names = useMemo(() => new Map((students ?? []).map((s) => [s.id, `${s.classNo}-${s.number} ${s.name}`])), [students]);
-  const ai = useAiReviews((rows ?? []).map((r) => r.id));
+  const ai = useAiReviews(
+    (rows ?? []).map((r) => r.id),
+    (rows ?? []).filter((r) => config.ai.enabled && r.source === "student" &&
+      (!r.createdAt || r.createdAt.toMillis() > Date.now() - 2 * 60_000)).map((r) => r.id),
+  );
   const suspect = (id: string) => Boolean(ai.get(id) && ai.get(id)!.verdict !== "ok");
   const list = (rows ?? []).filter((r) => (showDeleted ? true : r.status !== "deleted")).filter((r) => (onlySuspect ? suspect(r.id) : true));
   const entries = [

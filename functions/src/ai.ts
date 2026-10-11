@@ -4,14 +4,20 @@ import { z } from "zod";
 import { getStorage } from "firebase-admin/storage";
 import { onDocumentCreated } from "firebase-functions/v2/firestore";
 import type { ProgramDef, TaskDef } from "./shared/domain.js";
-import { defineSecret } from "firebase-functions/params";
+import { defineSecret, defineString } from "firebase-functions/params";
 import { logger } from "firebase-functions";
 import { db, loadConfig, REGION, FieldValue, todayKey, sp } from "./common.js";
 
 export const ANTHROPIC_API_KEY = defineSecret("ANTHROPIC_API_KEY");
+const ANTHROPIC_WORKSPACE_ID = defineString("ANTHROPIC_WORKSPACE_ID", {
+  description: "Anthropic workspace ID for AI review requests",
+});
 
 function client() {
-  return new Anthropic({ apiKey: ANTHROPIC_API_KEY.value() });
+  return new Anthropic({
+    apiKey: ANTHROPIC_API_KEY.value(),
+    defaultHeaders: { "anthropic-workspace-id": ANTHROPIC_WORKSPACE_ID.value() },
+  });
 }
 
 /** 하루 AI 호출 상한 확인 + 사용량 기록. 상한을 넘으면 false */

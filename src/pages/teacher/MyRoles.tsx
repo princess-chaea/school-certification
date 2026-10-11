@@ -10,9 +10,9 @@ import type { StaffDoc } from "../../lib/types";
 import { PageHeader } from "../../components/Layout";
 import { PixelIcon } from "../../components/Pixel";
 import { toast } from "../../components/ui";
-import { RoleBox } from "../TeacherSignup";
+import { RoleBox, SubjectClassPicker, type SubjectClass } from "../TeacherSignup";
 
-/** 내 역할: 담임 학급, 전담 학년·항목을 스스로 바꾸기 (학교 담당자 지정은 [구성원]에서) */
+/** 내 역할: 담임 학급, 전담 학년·항목을 스스로 바꾸기 (관리자 지정은 [구성원]에서) */
 export function MyRoles({ staff }: { staff: StaffDoc }) {
   const schoolId = useSchoolId();
   const config = useConfig();
@@ -23,10 +23,10 @@ export function MyRoles({ staff }: { staff: StaffDoc }) {
     httpsCallable<unknown, { hasAdmin: boolean; canClaim: boolean }>(functions, "claimAdmin")({ schoolId, check: true }).then((r) => setAdminState(r.data)).catch(() => undefined);
   }, [schoolId, staff.role]);
   async function claim() {
-    if (!(await askConfirm({ title: "학교 담당자 맡기", message: "지금 이 학교에 학교 담당자가 없어요.\n내가 학교 담당자를 맡을까요? 인증 항목·구성원·설정을 관리하게 돼요.", ok: "맡기", icon: "gear" }))) return;
+    if (!(await askConfirm({ title: "관리자 맡기", message: "지금 이 학교에 관리자가 없어요.\n내가 관리자를 맡을까요? 인증 항목·구성원·설정을 관리하게 돼요.", ok: "맡기", icon: "gear" }))) return;
     try {
       await httpsCallable(functions, "claimAdmin")({ schoolId });
-      toast("학교 담당자가 됐어요.");
+      toast("관리자가 됐어요.");
       setAdminState({ hasAdmin: true, canClaim: false });
     } catch (e) {
       toast((e as Error).message);
@@ -38,6 +38,7 @@ export function MyRoles({ staff }: { staff: StaffDoc }) {
   const [subject, setSubject] = useState(Boolean(staff.subject));
   const [grades, setGrades] = useState<number[]>(staff.grades ?? []);
   const [programs, setPrograms] = useState<string[]>(staff.programs ?? []);
+  const [subjectClasses, setSubjectClasses] = useState<SubjectClass[]>(staff.subjectClasses ?? []);
   const [busy, setBusy] = useState(false);
   const toggle = <T,>(arr: T[], v: T) => (arr.includes(v) ? arr.filter((x) => x !== v) : [...arr, v]);
   const isAdmin = staff.role === "admin";
@@ -50,9 +51,10 @@ export function MyRoles({ staff }: { staff: StaffDoc }) {
     setSubject(Boolean(staff.subject));
     setGrades(staff.grades ?? []);
     setPrograms(staff.programs ?? []);
-  }, [assignmentLocked, staff.homeroom, staff.grade, staff.classNo, staff.subject, staff.grades, staff.programs]);
+    setSubjectClasses(staff.subjectClasses ?? []);
+  }, [assignmentLocked, staff.homeroom, staff.grade, staff.classNo, staff.subject, staff.grades, staff.programs, staff.subjectClasses]);
   const hasPrograms = config.programs.some((p) => p.enabled);
-  const valid = name.trim() && (assignmentLocked || ((isAdmin || homeroom || subject) && (!subject || (grades.length > 0 && (programs.length > 0 || !hasPrograms)))));
+  const valid = name.trim() && (assignmentLocked || (!subject || (grades.length > 0 && (programs.length > 0 || !hasPrograms))));
 
   async function save() {
     setBusy(true);
@@ -66,6 +68,7 @@ export function MyRoles({ staff }: { staff: StaffDoc }) {
           subject,
           grades: subject ? grades : [],
           programs: subject ? programs : [],
+          subjectClasses: subject ? subjectClasses : [],
         } : {}),
         updatedAt: serverTimestamp(),
       });
@@ -89,14 +92,18 @@ export function MyRoles({ staff }: { staff: StaffDoc }) {
           <div className="role-head" style={{ cursor: "default" }}>
             <PixelIcon name="gear" size={26} />
             <span style={{ flex: 1 }}>
-              <b>학교 담당자</b> {isAdmin ? <span className="chip ok">지정됨</span> : <span className="chip gray">아님</span>}
+              <b>관리자</b> {isAdmin ? <span className="chip ok">지정됨</span> : <span className="chip gray">아님</span>}
               <br />
-              <span className="tiny">{adminState.canClaim ? "지금 학교 담당자가 없어요. 최초 개설자는 담당자를 다시 맡을 수 있어요." : adminState.hasAdmin ? "학교 담당자 지정·해제는 다른 학교 담당자가 [구성원]에서 해요." : "학교 담당자 복구는 최초 개설자 또는 플랫폼 운영자에게 요청해 주세요."}</span>
+              <span className="tiny">{adminState.canClaim ? "지금 관리자가 없어요. 최초 개설자는 관리자를 다시 맡을 수 있어요." : adminState.hasAdmin ? "관리자 지정·해제는 다른 관리자가 [구성원]에서 해요." : "관리자 복구는 최초 개설자 또는 플랫폼 운영자에게 요청해 주세요."}</span>
             </span>
-            {adminState.canClaim && <button className="btn sm" onClick={claim}>학교 담당자 맡기</button>}
+            {adminState.canClaim && <button className="btn sm" onClick={claim}>관리자 맡기</button>}
           </div>
         </div>
-        {assignmentLocked && <p className="small muted">일괄 체크 권한이 있어 담당 변경은 학교 담당자가 [구성원]에서 해요. 이름은 직접 수정할 수 있어요.</p>}
+        <div className={`role-box ${staff.certificationPrograms?.length ? "on" : ""}`}>
+          <div className="role-head"><PixelIcon name="trophy" size={26} /><div><b>인증 업무 담당</b><br /><span className="tiny">관리자가 지정한 항목의 전교·학급별 인증 현황을 볼 수 있어요. 지정·해제는 [구성원]에서 관리자가 해요.</span></div></div>
+          <div className="role-body row">{staff.certificationPrograms?.length ? staff.certificationPrograms.map((id) => { const p = config.programs.find((item) => item.id === id); return <span className="chip" key={id}><PixelIcon name={p?.icon ?? "trophy"} size={18} /> {p?.name ?? id}</span>; }) : <span className="tiny">지정된 항목 없음</span>}</div>
+        </div>
+        {assignmentLocked && <p className="small muted">일괄 체크 권한이 있어 담당 변경은 관리자가 [구성원]에서 해요. 이름은 직접 수정할 수 있어요.</p>}
         <fieldset disabled={assignmentLocked || busy} style={{ border: 0, padding: 0, margin: 0 }} className="stack">
         <RoleBox icon="users" title="담임" desc="우리 반 학생의 모든 인증 기록 확인" on={homeroom} onToggle={() => { if (!assignmentLocked && !busy) setHomeroom(!homeroom); }}>
           <div className="row">
@@ -108,16 +115,17 @@ export function MyRoles({ staff }: { staff: StaffDoc }) {
             </select>
           </div>
         </RoleBox>
-        <RoleBox icon="flag" title="전담 · 인증 업무 담당" desc="고른 학년의 고른 인증 항목 기록 확인" on={subject} onToggle={() => { if (!assignmentLocked && !busy) setSubject(!subject); }}>
+        <RoleBox icon="flag" title="전담" desc="맡은 학년·학급의 인증 기록과 학급 현황 확인" on={subject} onToggle={() => { if (!assignmentLocked && !busy) setSubject(!subject); }}>
           <div className="field">
             <span className="small" style={{ fontWeight: 700 }}>담당 학년</span>
             <div className="row">
-              {[1, 2, 3, 4, 5, 6].map((g) => <button key={g} className={`choice ${grades.includes(g) ? "on" : ""}`} onClick={() => setGrades(toggle(grades, g))}>{g}학년</button>)}
+              {[1, 2, 3, 4, 5, 6].map((g) => <button key={g} className={`choice ${grades.includes(g) ? "on" : ""}`} onClick={() => { setGrades(toggle(grades, g)); setSubjectClasses(subjectClasses.filter((c) => c.grade !== g)); }}>{g}학년</button>)}
             </div>
           </div>
+          <SubjectClassPicker grades={grades} value={subjectClasses} onChange={setSubjectClasses} />
           <div className="field">
             <span className="small" style={{ fontWeight: 700 }}>담당 인증 항목</span>
-            {!hasPrograms && <div className="tiny" style={{ marginTop: 4 }}>아직 인증 항목이 없어요. 학교 담당자가 항목을 만들면 여기서 고를 수 있어요.</div>}
+            {!hasPrograms && <div className="tiny" style={{ marginTop: 4 }}>아직 인증 항목이 없어요. 관리자가 항목을 만들면 여기서 고를 수 있어요.</div>}
             <div className="row">
               {config.programs.filter((p) => p.enabled).map((p) => (
                 <button key={p.id} className={`choice ${programs.includes(p.id) ? "on" : ""}`} onClick={() => setPrograms(toggle(programs, p.id))}>

@@ -32,6 +32,20 @@ test("validates roster year, grade, active flag, configured program and school-y
   assert.throws(() => validateBulkStudent(input, {...program, enabled: false}, student, staff, 2026, "2026-10-11"));
   assert.throws(() => validateBulkStudent(input, {...program, grades: [1]}, student, staff, 2026, "2026-10-11"));
 });
+
+test("subject class restrictions intersect grades and programs while legacy empty scope stays grade-wide", () => {
+  const subject: StaffDoc = { role: "teacher", status: "active", subject: true, grades: [4], programs: ["english"], bulkRecognitionPrograms: ["english"], subjectClasses: [{ grade: 4, classNo: 2 }, { grade: 5, classNo: 1 }] };
+  assert.equal(canBulkRecognize(subject, 4, 2, "english"), true);
+  assert.equal(canBulkRecognize(subject, 4, 1, "english"), false);
+  assert.equal(canBulkRecognize(subject, 5, 1, "english"), false);
+  assert.equal(canBulkRecognize(subject, 4, 2, "reading"), false);
+  assert.equal(canBulkRecognize({ ...subject, subjectClasses: [] }, 4, 1, "english"), true);
+  assert.equal(canBulkRecognize({ ...subject, subjectClasses: undefined }, 4, 1, "english"), true);
+  assert.equal(canBulkRecognize({ ...subject, subjectClasses: null } as unknown as StaffDoc, 4, 2, "english"), false);
+  assert.equal(canBulkRecognize({ ...subject, subjectClasses: [null, { grade: 4, classNo: 2, extra: true }] } as unknown as StaffDoc, 4, 2, "english"), false);
+  assert.equal(canBulkRecognize({ ...subject, homeroom: true, grade: 4, classNo: 1 }, 4, 1, "english"), true);
+  assert.equal(canBulkRecognize({ ...subject, role: "admin" }, 6, 5, "reading"), true);
+});
 test("English permits sentence and evidence subtasks, and requires exact configured subtask", () => {
   for (const task of ["t1", "t2", "t3", "t4"]) validateBulkStudent(validateBulkInput({...base, program:"english", task}), HAJU_PROGRAMS[2], student, staff, 2026, "2026-10-11");
   for (const task of [undefined, "fake"]) assert.throws(() => validateBulkStudent(validateBulkInput({...base, program:"english", task}), HAJU_PROGRAMS[2], student, staff, 2026, "2026-10-11"));

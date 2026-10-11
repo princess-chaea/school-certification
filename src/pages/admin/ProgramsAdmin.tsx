@@ -22,7 +22,7 @@ const ALL_TEMPLATES: ProgramTemplate[] = [ENGLISH_TASKS, ...PROGRAM_TEMPLATES];
 const AREAS = [...new Set(ALL_TEMPLATES.map((t) => t.area))];
 const EVIDENCE: EvidenceKind[] = ["photo", "text", "file", "audio", "link"];
 
-/** 학교 담당자: 우리 학교 인증 항목 관리 (템플릿에서 추가 · 직접 만들기 · 기능 요청) */
+/** 관리자: 우리 학교 인증 항목 관리 (템플릿에서 추가 · 직접 만들기 · 기능 요청) */
 export function ProgramsAdmin() {
   const schoolId = useSchoolId();
   const config = useConfig();

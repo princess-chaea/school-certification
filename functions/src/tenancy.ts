@@ -114,28 +114,35 @@ export const schoolPrograms = onCall({ region: REGION }, async (req) => {
 interface JoinInput {
   neis: NeisSchool;
   name: string;
-  admin?: boolean; // 학교 담당자
+  admin?: boolean; // 관리자
   homeroom?: { grade: number; classNo: number } | null; // 담임
-  subject?: { grades: number[]; programs: string[] } | null; // 전담
+  subject?: { grades: number[]; programs: string[]; subjectClasses?: { grade: number; classNo: number }[] } | null; // 전담
 }
 
 function staffDraft(input: JoinInput, email: string) {
   const name = String(input.name ?? "").trim().slice(0, 30);
   if (!name) throw new HttpsError("invalid-argument", "이름을 입력하세요.");
-  const out: Record<string, unknown> = { name, email, homeroom: false, grade: null, classNo: null, subject: false, grades: [], programs: [] };
+  const out: Record<string, unknown> = { name, email, homeroom: false, grade: null, classNo: null, subject: false, grades: [], programs: [], subjectClasses: [] };
   if (input.homeroom) {
     const grade = Number(input.homeroom.grade), classNo = Number(input.homeroom.classNo);
-    if (!(grade >= 1 && grade <= 6 && classNo >= 1 && classNo <= 20)) throw new HttpsError("invalid-argument", "담임 학년·반을 확인하세요.");
+    if (!(Number.isInteger(grade) && Number.isInteger(classNo) && grade >= 1 && grade <= 6 && classNo >= 1 && classNo <= 20)) throw new HttpsError("invalid-argument", "담임 학년·반을 확인하세요.");
     Object.assign(out, { homeroom: true, grade, classNo });
   }
   if (input.subject) {
-    const grades = (input.subject.grades ?? []).map(Number).filter((g) => g >= 1 && g <= 6);
+    if (!Array.isArray(input.subject.grades) || input.subject.grades.some((g) => !Number.isInteger(g) || g < 1 || g > 6)) throw new HttpsError("invalid-argument", "전담 학년을 확인하세요.");
+    const grades = [...new Set(input.subject.grades)].sort((a, b) => a - b);
     const programs = (input.subject.programs ?? []).map(String).filter((p) => /^[\w-]{1,40}$/.test(p));
     // 담당 항목은 비어도 됨: 학교에 인증 항목이 생기면 [내 역할]에서 고름
     if (!grades.length) throw new HttpsError("invalid-argument", "전담 학년을 고르세요.");
-    Object.assign(out, { subject: true, grades, programs });
+    const classes = input.subject.subjectClasses ?? [];
+    if (!Array.isArray(classes) || classes.length > 120 || classes.some((c) => !c || !Number.isInteger(c.grade) || !grades.includes(c.grade) || !Number.isInteger(c.classNo) || c.classNo < 1 || c.classNo > 20)) {
+      throw new HttpsError("invalid-argument", "전담 학급은 선택한 학년의 1~20반에서 고르세요.");
+    }
+    const subjectClasses = classes.filter((c, i) => classes.findIndex((x) => x.grade === c.grade && x.classNo === c.classNo) === i)
+      .map((c) => ({ grade: c.grade, classNo: c.classNo })).sort((a, b) => a.grade - b.grade || a.classNo - b.classNo);
+    Object.assign(out, { subject: true, grades, programs, subjectClasses });
   }
-  if (!input.admin && !out.homeroom && !out.subject) throw new HttpsError("invalid-argument", "역할을 하나 이상 고르세요.");
+  // Teaching assignments are optional; certification oversight is granted by an administrator after joining.
   return out;
 }
 
@@ -156,7 +163,7 @@ export const claimAdmin = onCall({ region: REGION }, async (req) => {
     const hasAdmin = !admins.empty;
     const canClaim = school.get("createdBy") === uid && !hasAdmin;
     if (check) return { hasAdmin, canClaim };
-    if (!canClaim) throw new HttpsError("permission-denied", "최초 학교 개설자만 담당자를 복구할 수 있어요. 학교 담당자나 플랫폼 운영자에게 요청하세요.");
+    if (!canClaim) throw new HttpsError("permission-denied", "최초 학교 개설자만 관리자 권한을 복구할 수 있어요. 관리자나 플랫폼 운영자에게 요청하세요.");
     tx.update(ref, { role: "admin", updatedAt: FieldValue.serverTimestamp() });
     return { hasAdmin: true, canClaim: false, claimed: true };
   });
@@ -223,11 +230,12 @@ export const requestJoin = onCall({ region: REGION, secrets: [NEIS_API_KEY] }, a
     const created = !currentSchool.exists;
     if (!created && currentSchool.get("status") !== "active") throw new HttpsError("failed-precondition", "현재 가입할 수 없는 학교예요. 플랫폼 운영자에게 문의하세요.");
     if (created && !verified) throw new HttpsError("aborted", "학교 정보가 변경되었어요. 다시 검색해 주세요.");
-    if (cur.exists && cur.get("status") === "rejected") throw new HttpsError("permission-denied", "가입이 거절된 계정이에요. 학교 담당자에게 문의하세요.");
+    if (cur.exists && cur.get("status") === "rejected") throw new HttpsError("permission-denied", "가입이 거절된 계정이에요. 관리자에게 문의하세요.");
     // Rejoining reconnects the account; it must not replace administrator-managed
     // assignments, or preserve a grant while widening its classroom/program scope.
     const grants = cur.get("bulkRecognitionPrograms");
-    if (!created && cur.exists && (cur.get("status") === "active" || (Array.isArray(grants) && grants.length > 0))) {
+    const certificationGrants = cur.get("certificationPrograms");
+    if (!created && cur.exists && (cur.get("status") === "active" || (Array.isArray(grants) && grants.length > 0) || (Array.isArray(certificationGrants) && certificationGrants.length > 0))) {
       tx.set(userRef, { schoolId, email, updatedAt: FieldValue.serverTimestamp() }, { merge: true });
       return { status: cur.get("status") === "active" ? "active" : "pending", schoolId, created: false };
     }

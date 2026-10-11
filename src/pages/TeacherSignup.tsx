@@ -14,7 +14,7 @@ interface ProgramOption { id: string; name: string; icon: string; grades: number
 interface SchoolMeta { opened: boolean; joinPolicy: "open" | "approval"; programs: ProgramOption[] }
 
 /**
- * 교사·학교 담당자 가입: ① 학교 찾기(NEIS) → ② 역할 (학교 담당자 / 담임 / 전담, 겹쳐서 선택)
+ * 교사·관리자 가입: ① 학교 찾기(NEIS) → ② 역할 (관리자 / 담임 / 전담, 겹쳐서 선택)
  * 지금 버전은 학교 가입 방식이 '바로 사용'(기본)이라 신청하면 바로 들어가요. 없는 학교는 그 자리에서 개설돼요.
  */
 export function TeacherSignup({ user, existing, isSuper, onSuper }: { user: User; existing?: StaffDoc; isSuper?: boolean; onSuper?: () => void }) {
@@ -34,6 +34,7 @@ export function TeacherSignup({ user, existing, isSuper, onSuper }: { user: User
   const [subject, setSubject] = useState(Boolean(existing?.subject));
   const [grades, setGrades] = useState<number[]>(existing?.grades ?? []);
   const [programs, setPrograms] = useState<string[]>(existing?.programs ?? []);
+  const [subjectClasses, setSubjectClasses] = useState<SubjectClass[]>(existing?.subjectClasses ?? []);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   // 학생 로그인 버튼으로 들어왔는데 명단에 없는 계정 → 먼저 학생 안내, [교사예요]를 눌러야 등록 화면
@@ -42,7 +43,7 @@ export function TeacherSignup({ user, existing, isSuper, onSuper }: { user: User
   const toggle = <T,>(arr: T[], v: T) => (arr.includes(v) ? arr.filter((x) => x !== v) : [...arr, v]);
   // 학교에 인증 항목이 아직 없으면 전담은 학년만 골라도 됨 (항목은 나중에 [내 역할]에서)
   const subjectOk = !subject || (grades.length > 0 && (programs.length > 0 || (meta?.programs.length ?? 0) === 0));
-  const valid = school && name.trim() && (admin || homeroom || subject) && subjectOk;
+  const valid = school && name.trim() && subjectOk;
   const isNew = meta ? !meta.opened : !school?.opened;
 
   // 입력하는 대로 찾기: 입력이 멈추고 0.35초 뒤 검색, 같은 검색어는 다시 묻지 않고, 늦게 온 이전 결과는 버림
@@ -92,14 +93,14 @@ export function TeacherSignup({ user, existing, isSuper, onSuper }: { user: User
     // 아직 개설 안 된 학교는 인증 항목이 비어 있으므로 서버에 묻지 않고 바로 보여 줌
     if (!s.opened) {
       setMeta({ opened: false, joinPolicy: "open", programs: [] });
-      setAdmin(true); // 새 학교는 만든 사람이 학교 담당자
+      setAdmin(true); // 새 학교는 만든 사람이 관리자
       return;
     }
     setMeta(null);
     try {
       const res = await httpsCallable<{ schoolId: string }, SchoolMeta>(functions, "schoolPrograms")({ schoolId: s.schoolCode });
       setMeta(res.data);
-      if (!res.data.opened) setAdmin(true); // 새 학교는 만든 사람이 학교 담당자
+      if (!res.data.opened) setAdmin(true); // 새 학교는 만든 사람이 관리자
     } catch {
       setMeta({ opened: Boolean(s.opened), joinPolicy: "open", programs: [] });
     }
@@ -115,7 +116,7 @@ export function TeacherSignup({ user, existing, isSuper, onSuper }: { user: User
         name: name.trim(),
         admin,
         homeroom: homeroom ? { grade, classNo } : null,
-        subject: subject ? { grades, programs } : null,
+        subject: subject ? { grades, programs, subjectClasses } : null,
       });
       refresh();
     } catch (e) {
@@ -152,7 +153,7 @@ export function TeacherSignup({ user, existing, isSuper, onSuper }: { user: User
           <LogoutButton />
         </div>
       </div>
-      <p className="muted small">{user.email} · 처음 한 번만 학교와 맡은 역할을 고르면 돼요. 처음 등록하는 학교면 그 자리에서 만들어지고, 만든 선생님이 학교 담당자가 돼요.</p>
+      <p className="muted small">{user.email} · 처음 한 번만 학교와 맡은 역할을 고르면 돼요. 처음 등록하는 학교면 그 자리에서 만들어지고, 만든 선생님이 관리자가 돼요.</p>
 
       <div className="card stack">
         <b>① 학교 찾기</b>
@@ -203,7 +204,7 @@ export function TeacherSignup({ user, existing, isSuper, onSuper }: { user: User
             <input className="input" value={name} onChange={(e) => setName(e.target.value)} placeholder="홍길동" />
           </label>
 
-          <RoleBox icon="gear" title="학교 담당자" desc="학교 설정, 인증 항목 추가, 명단 등록, 구성원·인증서 관리" on={admin} locked={isNew} onToggle={() => setAdmin(!admin)} />
+          <RoleBox icon="gear" title="관리자" desc="학교 설정, 인증 항목 추가, 명단 등록, 구성원·인증서 관리" on={admin} locked={isNew} onToggle={() => setAdmin(!admin)} />
 
           <RoleBox icon="users" title="담임" desc="우리 반 학생의 모든 인증 기록 확인" on={homeroom} onToggle={() => setHomeroom(!homeroom)}>
             <div className="row">
@@ -216,19 +217,20 @@ export function TeacherSignup({ user, existing, isSuper, onSuper }: { user: User
             </div>
           </RoleBox>
 
-          <RoleBox icon="flag" title="전담 · 인증 업무 담당" desc="고른 학년의 고른 인증 항목 기록 확인" on={subject} onToggle={() => setSubject(!subject)}>
+          <RoleBox icon="flag" title="전담" desc="맡은 학년·학급의 인증 기록과 학급 현황 확인" on={subject} onToggle={() => setSubject(!subject)}>
             <div className="field">
               <span className="small" style={{ fontWeight: 700 }}>담당 학년</span>
               <div className="row">
-                {[1, 2, 3, 4, 5, 6].map((g) => <button key={g} className={`choice ${grades.includes(g) ? "on" : ""}`} onClick={() => setGrades(toggle(grades, g))}>{g}학년</button>)}
+                {[1, 2, 3, 4, 5, 6].map((g) => <button key={g} className={`choice ${grades.includes(g) ? "on" : ""}`} onClick={() => { setGrades(toggle(grades, g)); setSubjectClasses(subjectClasses.filter((c) => c.grade !== g)); }}>{g}학년</button>)}
               </div>
             </div>
+          <SubjectClassPicker grades={grades} value={subjectClasses} onChange={setSubjectClasses} />
             <div className="field">
               <span className="small" style={{ fontWeight: 700 }}>담당 인증 항목</span>
               {meta === null ? (
                 <div className="tiny" style={{ marginTop: 4 }}>불러오는 중…</div>
               ) : meta.programs.length === 0 ? (
-                <div className="tiny" style={{ marginTop: 4 }}>아직 인증 항목이 없어요. 학교 담당자가 항목을 만든 뒤 [내 역할]에서 고를 수 있어요.</div>
+                <div className="tiny" style={{ marginTop: 4 }}>아직 인증 항목이 없어요. 관리자가 항목을 만든 뒤 [내 역할]에서 고를 수 있어요.</div>
               ) : (
                 <div className="row">
                   {meta.programs.map((p) => (
@@ -241,7 +243,11 @@ export function TeacherSignup({ user, existing, isSuper, onSuper }: { user: User
             </div>
           </RoleBox>
 
-          {meta?.joinPolicy === "approval" && !isNew && <div className="small muted">이 학교는 학교 담당자 승인 후 사용할 수 있어요.</div>}
+          <div className="role-box">
+            <div className="role-head"><PixelIcon name="trophy" size={26} /><div><b>인증 업무 담당</b><br /><span className="tiny">가입 후 관리자가 담당 인증 항목을 지정해요. 지정된 항목의 전교·학급별 인증 현황을 볼 수 있어요.</span></div></div>
+          </div>
+          {!homeroom && !subject && !isNew && <p className="small muted">담임·전담 없이도 가입할 수 있어요. 관리자에게 인증 업무 담당 지정을 요청하세요. 담당이 배정되기 전에는 학생 기록을 볼 수 없어요.</p>}
+          {meta?.joinPolicy === "approval" && !isNew && <div className="small muted">이 학교는 관리자 승인 후 사용할 수 있어요.</div>}
           {err && <div className="chip red">{err}</div>}
           <button className="btn big" disabled={!valid || busy} onClick={submit}>
             <PixelIcon name="play" size={20} /> {busy ? "들어가는 중…" : isNew ? "학교 만들고 시작하기" : "가입하고 시작하기"}
@@ -261,7 +267,7 @@ export function RoleBox({ icon, title, desc, on, locked, onToggle, children }: {
         <span style={{ flex: 1, textAlign: "left" }}>
           <b>{title}</b>
           <br />
-          <span className="tiny">{locked ? "새 학교를 만드는 선생님은 학교 담당자가 돼요." : desc}</span>
+          <span className="tiny">{locked ? "새 학교를 만드는 선생님은 관리자가 돼요." : desc}</span>
         </span>
       </button>
       {on && children && <div className="role-body stack">{children}</div>}
@@ -310,7 +316,7 @@ export function PendingApproval({ staff, user, schoolName }: { staff: StaffDoc; 
   const [edit, setEdit] = useState(false);
   if (edit) return <TeacherSignup user={user} existing={staff} />;
   const what = [
-    staff.requestedAdmin && "학교 담당자",
+    staff.requestedAdmin && "관리자",
     staff.homeroom && `${staff.grade}학년 ${staff.classNo}반 담임`,
     staff.subject && `${staff.grades?.join("·")}학년 전담`,
   ].filter(Boolean).join(" · ");
@@ -319,11 +325,32 @@ export function PendingApproval({ staff, user, schoolName }: { staff: StaffDoc; 
       <div className="login-mark" aria-hidden="true"><PixelIcon name="clock" size={64} /></div>
       <h1 style={{ margin: 0 }}>{staff.status === "rejected" ? "가입이 반려되었어요" : "승인을 기다리고 있어요"}</h1>
       <div className="muted">{schoolName} · {staff.name} 선생님 · {what}</div>
-      <div className="small muted">학교 담당자가 승인하면 이 화면이 자동으로 바뀌어요.</div>
+      <div className="small muted">관리자가 승인하면 이 화면이 자동으로 바뀌어요.</div>
       <div className="row" style={{ justifyContent: "center" }}>
         <button className="btn secondary" onClick={() => setEdit(true)}>가입 정보 다시 신청</button>
         <LogoutButton className="btn ghost" />
       </div>
     </Centered>
   );
+}
+
+export interface SubjectClass { grade: number; classNo: number }
+
+export function SubjectClassPicker({ grades, value, onChange }: { grades: number[]; value: SubjectClass[]; onChange: (classes: SubjectClass[]) => void }) {
+  const [pickGrade, setPickGrade] = useState(grades[0] ?? 1);
+  const [pickClass, setPickClass] = useState(1);
+  const selectedGrade = grades.includes(pickGrade) ? pickGrade : [...grades].sort((a, b) => a - b)[0];
+  return <div className="field">
+    <span className="small" style={{ fontWeight: 700 }}>담당 학급</span>
+    <span className="tiny">학급을 추가하지 않으면 선택한 학년의 모든 반을 맡아요. 추가하면 아래 학급만 맡아요.</span>
+    <div className="row">
+      <select className="input" aria-label="전담 학급 학년" value={selectedGrade ?? ""} onChange={(e) => setPickGrade(Number(e.target.value))} disabled={!grades.length}>
+        {!grades.length && <option value="">학년 먼저 선택</option>}
+        {[...grades].sort((a, b) => a - b).map((g) => <option key={g} value={g}>{g}학년</option>)}
+      </select>
+      <select className="input" aria-label="전담 학급 반" value={pickClass} onChange={(e) => setPickClass(Number(e.target.value))}>{Array.from({ length: 20 }, (_, i) => i + 1).map((c) => <option key={c} value={c}>{c}반</option>)}</select>
+      <button className="btn sm" disabled={!selectedGrade || value.some((c) => c.grade === selectedGrade && c.classNo === pickClass)} onClick={() => selectedGrade && onChange([...value, { grade: selectedGrade, classNo: pickClass }].sort((a, b) => a.grade - b.grade || a.classNo - b.classNo))}>학급 추가</button>
+    </div>
+    <div className="row">{value.map((c) => <button className="choice on" key={`${c.grade}-${c.classNo}`} onClick={() => onChange(value.filter((item) => item.grade !== c.grade || item.classNo !== c.classNo))}>{c.grade}학년 {c.classNo}반 ×</button>)}{value.length > 0 && <button className="btn ghost sm" onClick={() => onChange([])}>선택 학년 전체 반</button>}</div>
+  </div>;
 }

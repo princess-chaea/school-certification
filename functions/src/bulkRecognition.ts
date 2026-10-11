@@ -26,7 +26,8 @@ export function validateBulkInput(data: Record<string, unknown>) {
 export function canBulkRecognize(staff: StaffDoc, grade: number, classNo: number, program: string): boolean {
   return staff.status === "active" && (staff.role === "admin" || (staff.role === "teacher" && Array.isArray(staff.bulkRecognitionPrograms) && staff.bulkRecognitionPrograms.includes(program) && (
     (staff.homeroom === true && staff.grade === grade && staff.classNo === classNo) ||
-    (staff.subject === true && staff.grades?.includes(grade) === true && staff.programs?.includes(program) === true)
+    (staff.subject === true && staff.grades?.includes(grade) === true && staff.programs?.includes(program) === true
+      && (staff.subjectClasses === undefined || (Array.isArray(staff.subjectClasses) && (staff.subjectClasses.length === 0 || staff.subjectClasses.some((item) => item !== null && typeof item === "object" && Object.keys(item).length === 2 && item.grade === grade && item.classNo === classNo)))))
   )));
 }
 export function validateBulkStudent(input: ReturnType<typeof validateBulkInput>, program: ProgramDef | undefined, student: Record<string, unknown>, staff: StaffDoc, year: number, today: string) {

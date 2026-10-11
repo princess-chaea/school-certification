@@ -8,7 +8,7 @@ import { Empty, toast } from "../../components/ui";
 import { askConfirm } from "../../components/Modal";
 import { PageHeader } from "../../components/Layout";
 import { PixelIcon } from "../../components/Pixel";
-import { ScopeBar, useScope } from "./scope";
+import { ScopeBar, useScope, canTeachClassProgram } from "./scope";
 import { useScopedStudents, countOf } from "./Overview";
 import { activePrograms } from "../../../shared/domain";
 
@@ -53,9 +53,7 @@ export function Bulk() {
     try { return JSON.parse(sessionStorage.getItem(storageKey) ?? "null") as Pending | null; }
     catch { return null; }
   });
-  const list = program ? (rows ?? []).filter((s) => s.year === school.year && program.grades.includes(s.grade) && (isAdmin ||
-    (staff.homeroom && staff.grade === s.grade && staff.classNo === s.classNo) ||
-    (staff.subject && staff.grades?.includes(s.grade) && staff.programs?.includes(program.id)))) : [];
+  const list = program ? (rows ?? []).filter((s) => s.year === school.year && program.grades.includes(s.grade) && canTeachClassProgram(staff, s.grade, s.classNo, program.id)) : [];
   const selected = list.filter((s) => picked.has(s.id));
   const unit = task ? task.kind === "sentences" ? "문장" : "회" : program?.unit ?? "회";
   useEffect(() => { setPicked(new Set()); setCount(1); }, [scope.grade, scope.classNo, program?.id, task?.id]);
@@ -129,7 +127,7 @@ export function Bulk() {
     }
   }
 
-  if (!isAdmin && !staff.bulkRecognitionPrograms?.length) return <div className="page"><Empty icon="lock">학교 담당자가 일괄 체크 권한을 부여한 교사만 사용할 수 있어요.</Empty></div>;
+  if (!isAdmin && !staff.bulkRecognitionPrograms?.length) return <div className="page"><Empty icon="lock">관리자가 일괄 체크 권한을 부여한 교사만 사용할 수 있어요.</Empty></div>;
   return (
     <div className="page">
       <PageHeader icon="eye" title="관찰·오프라인 일괄 체크" />
@@ -144,7 +142,7 @@ export function Bulk() {
       <fieldset disabled={busy || Boolean(pending)} style={{ border: 0, margin: 0, padding: 0, minWidth: 0 }}>
         <ScopeBar showProgram={false} />
         <p className="small muted">선생님이 직접 확인한 활동을 선택한 학생에게 추가해요. 온라인 도입 전에 검사한 기록도 입력할 수 있어요. 담당 범위와 허용된 인증 항목만 표시돼요.</p>
-        {!program ? <Empty>이 학년에 허용된 일괄 체크 항목이 없어요. 학교 담당자에게 권한과 담당 범위를 확인해 주세요.</Empty> : <div className="card px-card stack">
+        {!program ? <Empty>이 학년에 허용된 일괄 체크 항목이 없어요. 관리자에게 권한과 담당 범위를 확인해 주세요.</Empty> : <div className="card px-card stack">
           <label className="field"><span>인증 항목</span><select className="input" value={program.id} onChange={(e) => { setProgramId(e.target.value); setTaskId(""); }}>{programs.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}</select></label>
           {program.kind === "tasks" && <label className="field"><span>세부 과제</span><select className="input" value={task?.id ?? ""} onChange={(e) => setTaskId(e.target.value)}>{(program.tasks ?? []).map((t) => <option key={t.id} value={t.id}>{t.name} · 목표 {t.goal}{t.kind === "sentences" ? "문장" : "회"}</option>)}</select></label>}
           {task && <p className="small muted">{task.description}{task.kind === "sentences" && <><br />오프라인 검사한 문장 수는 이 과제의 진행도에 합산돼요. 온라인의 개별 문장을 검사 완료로 바꾸지는 않아요.</>}</p>}

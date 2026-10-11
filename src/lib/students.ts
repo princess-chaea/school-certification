@@ -3,7 +3,7 @@ import { functions } from "../firebase";
 import { askConfirm } from "../components/Modal";
 import { toast } from "../components/ui";
 
-/** 학생 완전 삭제 (학교 담당자·그 반 담임): 확인 → 서버에서 기록·녹음·사진까지 삭제. 삭제했으면 true */
+/** 학생 완전 삭제 (관리자·그 반 담임): 확인 → 서버에서 기록·녹음·사진까지 삭제. 삭제했으면 true */
 export async function deleteStudentFlow(schoolId: string, s: { sid?: string; id?: string; grade: number; classNo: number; number: number; name?: string }) {
   const sid = s.sid ?? s.id ?? "";
   const label = `${s.grade}학년 ${s.classNo}반 ${s.number}번 ${s.name || "(이름 입력 전)"}`;

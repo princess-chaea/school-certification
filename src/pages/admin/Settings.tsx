@@ -112,12 +112,12 @@ export function Settings() {
           <input className="input" value={domain} onChange={(e) => setDomain(e.target.value.trim())} placeholder="예: gmail.com 또는 학교 계정 도메인" />
         </label>
         <div className="field">
-          <span style={{ fontWeight: 600 }}>교사·담당자 가입 방식</span>
+          <span style={{ fontWeight: 600 }}>교사·관리자 가입 방식</span>
           <div className="row">
             <button className={`choice ${joinPolicy === "open" ? "on" : ""}`} onClick={() => setJoinPolicy("open")}>가입 즉시 사용</button>
-            <button className={`choice ${joinPolicy === "approval" ? "on" : ""}`} onClick={() => setJoinPolicy("approval")}>학교 담당자 승인 후 사용 (권장: 실제 학생 데이터 운영 시)</button>
+            <button className={`choice ${joinPolicy === "approval" ? "on" : ""}`} onClick={() => setJoinPolicy("approval")}>관리자 승인 후 사용 (권장: 실제 학생 데이터 운영 시)</button>
           </div>
-          <span className="tiny">‘가입 즉시 사용’은 학교 이메일 소속 확인 없이 Google 계정으로 교사 권한을 받을 수 있어요. 실제 학생 기록을 운영할 때는 ‘학교 담당자 승인 후 사용’을 선택해 주세요.</span>
+          <span className="tiny">‘가입 즉시 사용’은 학교 이메일 소속 확인 없이 Google 계정으로 교사 권한을 받을 수 있어요. 실제 학생 기록을 운영할 때는 ‘관리자 승인 후 사용’을 선택해 주세요.</span>
         </div>
         <div><button className="btn" disabled={busy === "school"} onClick={() => run("school", async () => { await updateDoc(doc(db, sp(schoolId)), { principalName: principal.trim(), studentDomain: domain, joinPolicy, slogan: slogan.trim(), updatedAt: serverTimestamp() }); })}>학교 정보 저장</button></div>
       </Section>

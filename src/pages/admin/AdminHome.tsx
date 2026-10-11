@@ -19,7 +19,11 @@ export function AdminHome() {
   const school = useSchool();
   const config = useConfig();
   const { rows } = useCollection<StudentDoc & { id: string }>(sp(schoolId, "students"), [], [schoolId]);
-  const students = (rows ?? []).filter((s) => s.active !== false);
+  const [grade, setGrade] = useState(0);
+  const [classNo, setClassNo] = useState(0);
+  const allStudents = (rows ?? []).filter((s) => s.active !== false);
+  const students = allStudents.filter((s) => (!grade || s.grade === grade) && (!classNo || s.classNo === classNo));
+  const classes = [...new Set(allStudents.filter((s) => s.grade === grade).map((s) => s.classNo))].sort((a, b) => a - b);
   const real = students.filter((s) => !s.isDemo);
   const [types, setTypes] = useState<Record<string, Array<[string, number]>>>({}); // 항목ID → [활동 종류, 횟수]
   const [usage, setUsage] = useState<{ total?: number } | null>(null);
@@ -55,7 +59,11 @@ export function AdminHome() {
 
   return (
     <div className="page">
-      <PageHeader icon="school" title={`${school.name} 전교 현황`} right={<span className="chip gray hud">{school.year}</span>} />
+      <PageHeader icon="school" title={`${school.name} ${grade ? `${grade}학년 ${classNo ? `${classNo}반` : "전체"}` : "전교"} 현황`} right={<span className="chip gray hud">{school.year}</span>} />
+      <div className="card row" style={{ flexWrap: "wrap", marginBottom: 14 }}>
+        <label>학년 <select className="input sm" value={grade} onChange={(e) => { setGrade(Number(e.target.value)); setClassNo(0); }}><option value={0}>전체</option>{GRADES.map((g) => <option key={g} value={g}>{g}학년</option>)}</select></label>
+        <label>학급 <select className="input sm" value={classNo} disabled={!grade} onChange={(e) => setClassNo(Number(e.target.value))}><option value={0}>전체 반</option>{classes.map((c) => <option key={c} value={c}>{c}반</option>)}</select></label>
+      </div>
       {students.length > real.length && <div className="chip demo" style={{ marginBottom: 10 }}>예시(더미) 학생 {students.length - real.length}명이 포함된 수치예요. 실제 운영 현황은 예시 데이터를 지운 뒤 확인해요.</div>}
 
       <div className="card stack" style={{ background: "var(--navy-50)" }}>
@@ -83,7 +91,7 @@ export function AdminHome() {
             </tr>
           </thead>
           <tbody>
-            {GRADES.map((g) => {
+            {GRADES.filter((g) => !grade || grade === g).map((g) => {
               const gs = students.filter((s) => s.grade === g);
               const gp = gs.filter((s) => PROGRAMS.some((p) => countOf(s, p.id) > 0));
               const gc = gp.filter((s) => PROGRAMS.some((p) => isCertified(medalOf(s, p.id))));

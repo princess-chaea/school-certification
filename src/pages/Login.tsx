@@ -42,7 +42,7 @@ export function Login() {
         <div className="tiny" style={{ lineHeight: 1.6 }}>
           학생·선생님 모두 이 버튼으로 로그인하면 우리 학교 페이지로 바로 들어가요.
           <br />
-          처음 오신 선생님은 오른쪽 위 [회원가입(교사)]에서 학교와 역할(학교 담당자·담임·전담)을 골라요.
+          처음 오신 선생님은 오른쪽 위 [회원가입(교사)]에서 학교와 역할(관리자·담임·전담)을 골라요.
         </div>
         {err && <div className="chip red">{err}</div>}
       </div>

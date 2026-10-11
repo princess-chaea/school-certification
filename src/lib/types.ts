@@ -19,10 +19,10 @@ export interface StudentDoc {
   feedbackAt?: Timestamp;
 }
 
-/** 교사·학교 담당자 (역할은 겹칠 수 있음) */
+/** 교사 업무와 관리자 권한은 함께 가질 수 있다. */
 export interface StaffDoc {
   uid: string;
-  role: "teacher" | "admin"; // admin = 학교 담당자
+  role: "teacher" | "admin"; // 기존 저장 형식: admin이어도 담임·전담 업무를 겸임할 수 있다.
   status: "pending" | "active" | "rejected";
   name: string;
   email: string;
@@ -32,6 +32,8 @@ export interface StaffDoc {
   subject?: boolean;
   grades?: number[];
   programs?: string[];
+  subjectClasses?: { grade: number; classNo: number }[]; // 비어 있으면 선택 학년의 전체 반
+  certificationPrograms?: string[]; // 관리자가 지정한 인증 업무 담당 항목 (전교·학급별 통계 조회)
   requestedAdmin?: boolean;
   bulkRecognitionPrograms?: string[]; // 관리자가 부여하는 관찰 기록 일괄 인정 권한
   createdAt?: Timestamp;

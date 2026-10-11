@@ -8,8 +8,19 @@ service firebase.storage {
 
     match /schools/{schoolId}/uploads/{sid}/{program}/{file} {
       function staffPath() { return /databases/(default)/documents/schools/$(schoolId)/staff/$(request.auth.uid); }
+      function teachingScope(u) {
+        let student = firestore.get(/databases/(default)/documents/schools/$(schoolId)/students/$(sid)).data;
+        let classes = u.get('subjectClasses', []);
+        return (u.get('homeroom', false) == true && u.get('grade', 0) == student.grade && u.get('classNo', 0) == student.classNo)
+          || (u.get('subject', false) == true && student.grade in u.get('grades', []) && program in u.get('programs', [])
+              && classes is list && (classes.size() == 0 || {'grade': student.grade, 'classNo': student.classNo} in classes));
+      }
+      function staffCanRead() {
+        let u = firestore.get(staffPath()).data;
+        return u.status == 'active' && (u.role == 'admin' || (u.role == 'teacher' && teachingScope(u)));
+      }
       allow read: if (signedIn() && request.auth.token.email.lower() == sid)
-        || (signedIn() && firestore.exists(staffPath()) && firestore.get(staffPath()).data.status == 'active');
+        || (signedIn() && staffCanRead());
       function ticketUpload() {
         let ticket = firestore.get(/databases/(default)/documents/schools/$(schoolId)/uploadTickets/$(file)).data;
         return ticket.uid == request.auth.uid && ticket.sid == sid && ticket.program == program

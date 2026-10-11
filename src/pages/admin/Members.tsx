@@ -32,14 +32,14 @@ function download(name: string, text: string, type = "text/csv;charset=utf-8") {
 export function Members() {
   const [tab, setTab] = useState<"admins" | "teachers" | "roster" | "students">("teachers");
   return (
-    <div className="page">
+    <div className="page members-page">
       <PageHeader icon="users" title="구성원 관리" />
-      <div className="row" style={{ marginBottom: 14 }}>
+      <div className="row members-tabs">
         <button className={`choice ${tab === "admins" ? "on" : ""}`} onClick={() => setTab("admins")}><PixelIcon name="gear" size={16} /> 관리자</button>
         <button className={`choice ${tab === "teachers" ? "on" : ""}`} onClick={() => setTab("teachers")}><PixelIcon name="users" size={16} /> 교사</button>
         <button className={`choice ${tab === "students" ? "on" : ""}`} onClick={() => setTab("students")}><PixelIcon name="school" size={16} /> 학급별 학생</button>
         {/* 보기 탭은 왼쪽, 명단 올리기는 오른쪽 끝 */}
-        <button className={`choice ${tab === "roster" ? "on" : ""}`} style={{ marginLeft: "auto" }} onClick={() => setTab("roster")}><PixelIcon name="upload" size={16} /> 학생 명단 CSV 올리기</button>
+        <button className={`choice members-upload-tab ${tab === "roster" ? "on" : ""}`} onClick={() => setTab("roster")}><PixelIcon name="upload" size={16} /> 학생 명단 CSV 올리기</button>
       </div>
       {(tab === "admins" || tab === "teachers") && <StaffManager key={`${tab}`} role={tab === "admins" ? "admin" : "teacher"} />}
       {tab === "roster" && <RosterUpload />}
@@ -145,7 +145,7 @@ export function StaffManager({ role }: { role: StaffDoc["role"] }) {
     <div className="stack">
       {role === "teacher" && <div className="card flat stack">
         <p className="small" style={{ margin: 0 }}>담임·전담·인증 업무 담당은 겸임할 수 있어요. 일괄 인정 권한은 별도로 부여하며, 권한을 회수해도 이미 인정한 기록은 유지돼요.</p>
-        <div className="row" style={{ flexWrap: "wrap" }}>
+        <div className="row member-bulk-controls">
           <label className="row small"><input type="checkbox" aria-label="승인된 교사 모두 선택" disabled={busy || !eligible.length} checked={eligible.length > 0 && selectedStaff.length === eligible.length} onChange={(e) => setSelected(e.target.checked ? eligible.map((s) => s.id) : [])} /> 승인된 교사 모두 선택 ({selectedStaff.length}/{eligible.length})</label>
           <button className="btn sm" disabled={busy || !selectedStaff.length} onClick={() => openGrant(selectedStaff.map((s) => s.id))}>선택 {selectedStaff.length}명 권한 변경</button>
         </div>
@@ -154,20 +154,20 @@ export function StaffManager({ role }: { role: StaffDoc["role"] }) {
       {pending.length > 0 && <div className="chip warn" style={{ alignSelf: "flex-start" }}>승인 대기 {pending.length}명</div>}
       {rows === null && <div className="muted">불러오는 중…</div>}
       {rows !== null && list.length === 0 && <Empty>등록된 {role === "admin" ? "관리자" : "교사"}가 없어요.</Empty>}
-      <div className="table-wrap">
-        <table className="table stack-sm members-table">
+      <div className="table-wrap members-table-wrap">
+        <table className={`table members-table members-table--${role}`}>
           <thead><tr>{role === "teacher" && <th>선택</th>}<th>이름</th>{role === "teacher" && <th>담당</th>}<th>이메일</th><th>상태</th><th>{role === "teacher" ? "일괄 인정 권한" : "권한"}</th><th>관리</th></tr></thead>
           <tbody>
             {list.map((s) => (
               <tr key={s.id}>
-                {role === "teacher" && <td data-label="선택">{s.role === "teacher" && <input type="checkbox" aria-label={`${s.name} 선생님 선택`} disabled={busy || s.status !== "active"} checked={selectedStaff.some((item) => item.id === s.id)} onChange={(e) => setSelected((ids) => e.target.checked ? [...ids, s.id] : ids.filter((id) => id !== s.id))} />}</td>}
-                <td><b>{s.name}</b>{role === "teacher" && s.role === "admin" && <span className="chip gray">관리자</span>}{s.requestedAdmin && s.role !== "admin" && <span className="chip warn">관리자 신청</span>}</td>
-                {role === "teacher" && <td data-label="담당">{assignment(s)}</td>}
+                {role === "teacher" && <td className="member-select">{s.role === "teacher" && <input type="checkbox" aria-label={`${s.name} 선생님 선택`} disabled={busy || s.status !== "active"} checked={selectedStaff.some((item) => item.id === s.id)} onChange={(e) => setSelected((ids) => e.target.checked ? [...ids, s.id] : ids.filter((id) => id !== s.id))} />}</td>}
+                <td className="member-name"><div className="member-name-line"><b>{s.name}</b>{role === "teacher" && s.role === "admin" && <span className="chip gray">관리자</span>}{s.requestedAdmin && s.role !== "admin" && <span className="chip warn">관리자 신청</span>}</div></td>
+                {role === "teacher" && <td className="member-assignment-cell" data-label="담당">{assignment(s)}</td>}
                 <td className="small member-email" data-label="이메일">{s.email}</td>
-                <td data-label="상태">{s.status === "active" ? <span className="chip ok">승인</span> : s.status === "pending" ? <span className="chip warn">대기</span> : <span className="chip red">반려</span>}</td>
-                <td data-label={role === "teacher" ? "일괄 인정 권한" : "권한"}>{role === "admin" ? <span className="chip">관리자</span> : s.role === "admin" ? <span className="small muted">전체 항목 허용</span> : <div className="member-permissions">{enabledPrograms.filter((p) => s.bulkRecognitionPrograms?.includes(p.id)).map((p) => <span className="chip gray icon-text" key={p.id}><PixelIcon name={p.icon} size={14} />{p.name}</span>)}{!s.bulkRecognitionPrograms?.length && <span className="small muted">없음</span>}</div>}</td>
-                <td>
-                  <div className="row" style={{ gap: 6, flexWrap: "wrap" }}>
+                <td className="member-status" data-label="상태">{s.status === "active" ? <span className="chip ok">승인</span> : s.status === "pending" ? <span className="chip warn">대기</span> : <span className="chip red">반려</span>}</td>
+                <td className="member-permission-cell" data-label={role === "teacher" ? "일괄 인정 권한" : "권한"}>{role === "admin" ? <span className="chip">관리자</span> : s.role === "admin" ? <span className="small muted">전체 항목 허용</span> : <div className="member-permissions">{enabledPrograms.filter((p) => s.bulkRecognitionPrograms?.includes(p.id)).map((p) => <span className="chip gray icon-text" key={p.id}><PixelIcon name={p.icon} size={14} />{p.name}</span>)}{!s.bulkRecognitionPrograms?.length && <span className="small muted">없음</span>}</div>}</td>
+                <td className="member-actions">
+                  <div className="member-action-buttons">
                     {role === "teacher" && <button className="btn ghost sm" disabled={busy} onClick={() => setEditing(s)}>담당 수정</button>}
                     {role === "teacher" && s.role === "teacher" && s.status === "active" && <button className="btn ghost sm" disabled={busy} onClick={() => openGrant([s.id])}>권한 변경</button>}
                     {s.status !== "active" && <button className="btn ok sm" disabled={busy} onClick={() => run(() => set(s.id, { status: "active" }))}>승인</button>}

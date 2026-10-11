@@ -186,11 +186,68 @@ table.table th, table.table td { padding: 9px 10px; border-bottom: 1px solid var
 table.table th { background: #f9fafb; font-size: .8rem; color: var(--ink-2); position: sticky; top: 0; }
 table.table tr:last-child td { border-bottom: 0; }
 table.table td.num { text-align: right; font-variant-numeric: tabular-nums; }
-.members-table td { white-space: normal !important; vertical-align: top; }
-.members-table .member-email { overflow-wrap: anywhere; }
-.member-assignment { min-width: 210px; line-height: 1.5; }
+.members-page { max-width: 1440px; }
+.members-tabs { margin-bottom: 14px; }
+.members-tabs .choice { align-items: center; gap: 4px; white-space: nowrap; }
+.members-upload-tab { margin-left: auto; }
+.members-table { table-layout: fixed; }
+.members-table--teacher th:nth-child(1) { width: 4%; }
+.members-table--teacher th:nth-child(2) { width: 12%; }
+.members-table--teacher th:nth-child(3) { width: 28%; }
+.members-table--teacher th:nth-child(4) { width: 19%; }
+.members-table--teacher th:nth-child(5) { width: 5%; }
+.members-table--teacher th:nth-child(6) { width: 16%; }
+.members-table--teacher th:nth-child(7) { width: 16%; }
+.members-table--admin th:nth-child(1) { width: 16%; }
+.members-table--admin th:nth-child(2) { width: 31%; }
+.members-table--admin th:nth-child(3) { width: 9%; }
+.members-table--admin th:nth-child(4) { width: 12%; }
+.members-table--admin th:nth-child(5) { width: 32%; }
+.table.members-table td { white-space: normal; vertical-align: top; word-break: keep-all; }
+.member-name-line, .member-action-buttons { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; }
+.member-name-line b, .member-name-line .chip, .member-status .chip, .member-action-buttons .btn { white-space: nowrap; }
+.member-assignment { min-width: 0; line-height: 1.5; }
+.member-assignment > div:first-child { overflow-wrap: anywhere; }
+.members-table .member-email { overflow-wrap: anywhere; word-break: normal; }
 .member-programs, .member-permissions { display: flex; flex-wrap: wrap; align-items: center; gap: 5px 8px; margin-top: 4px; }
-.member-program { display: inline-flex; align-items: center; gap: 3px; font-size: .8rem; color: var(--ink-2); }
+.member-program { display: inline-flex; align-items: center; gap: 3px; max-width: 100%; font-size: .8rem; color: var(--ink-2); }
+
+@media (max-width: 1199px) {
+  .members-table-wrap { overflow: visible; border: 0; background: transparent; }
+  .members-table, .members-table tbody { display: block; width: 100%; }
+  .members-table thead { display: none; }
+  .members-table tbody { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+  .members-table tr { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 9px 14px; padding: 14px; border: 1px solid var(--line); border-radius: 12px; background: #fff; }
+  .members-table--teacher tr { grid-template-areas: "name select" "assignment assignment" "email email" "status rights" "actions actions"; }
+  .members-table--admin tr { grid-template-areas: "name status" "email email" "rights rights" "actions actions"; }
+  .table.members-table td { display: block; width: auto; min-width: 0; padding: 0; border: 0; }
+  .members-table .member-select { grid-area: select; justify-self: end; }
+  .members-table .member-name { grid-area: name; }
+  .members-table .member-assignment-cell { grid-area: assignment; }
+  .members-table .member-email { grid-area: email; }
+  .members-table .member-status { grid-area: status; }
+  .members-table .member-permission-cell { grid-area: rights; }
+  .table.members-table .member-actions { grid-area: actions; border-top: 1px solid var(--line); padding-top: 10px; }
+  .members-table td[data-label]::before { content: attr(data-label); display: block; margin-bottom: 3px; color: var(--ink-2); font-size: .78rem; font-weight: 700; }
+  .members-table .member-name-line b { font-size: 1rem; }
+  .member-bulk-controls { align-items: flex-start; }
+}
+
+@media (max-width: 900px) {
+  .members-table tbody { grid-template-columns: minmax(0, 1fr); }
+}
+
+@media (max-width: 640px) {
+  .members-upload-tab { margin-left: 0; flex: 1 1 100%; justify-content: center; }
+  .member-bulk-controls > label, .member-bulk-controls > .btn { width: 100%; }
+  .member-bulk-controls > .btn { justify-content: center; }
+}
+
+@media (max-width: 480px) {
+  .members-table--teacher tr { grid-template-areas: "name select" "assignment assignment" "email email" "status status" "rights rights" "actions actions"; }
+  .members-table--admin tr { grid-template-areas: "name name" "email email" "status status" "rights rights" "actions actions"; }
+  .member-action-buttons .btn { flex: 1 1 auto; }
+}
 
 .stat { display: flex; flex-direction: column; gap: 2px; }
 .stat b { font-size: 1.7rem; font-weight: 900; color: var(--navy); line-height: 1.1; }

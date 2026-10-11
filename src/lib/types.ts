@@ -33,6 +33,7 @@ export interface StaffDoc {
   grades?: number[];
   programs?: string[];
   requestedAdmin?: boolean;
+  bulkRecognitionPrograms?: string[]; // 관리자가 부여하는 관찰 기록 일괄 인정 권한
   createdAt?: Timestamp;
 }
 
@@ -68,6 +69,8 @@ export interface Submission {
   createdAt?: Timestamp;
   status: "pending" | "active" | "deleted";
   source: "student" | "teacher";
+  recognitionMode?: "observation" | "offline";
+  createdBy?: string;
   count: number;
   createdByName?: string;
   reviewedByName?: string;

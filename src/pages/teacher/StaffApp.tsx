@@ -18,11 +18,12 @@ import { MyRoles } from "./MyRoles";
 /** 교사·학교 담당자 공통 화면 틀 (모든 학교 동일) */
 export function StaffApp({ staff, isSuper, onSuper }: { staff: StaffDoc; isSuper: boolean; onSuper: () => void }) {
   const isAdmin = staff.role === "admin";
+  const canBulk = isAdmin || Boolean(staff.bulkRecognitionPrograms?.length);
   const tabs: Tab[] = [
     { to: "/", icon: "chart", label: "현황", end: true },
     { to: "/review", icon: "check", label: "확인하기" },
     { to: "/feed", icon: "log", label: "기록" },
-    { to: "/bulk", icon: "eye", label: "일괄 체크" },
+    ...(canBulk ? [{ to: "/bulk", icon: "eye", label: "일괄 체크" }] : []),
     ...(isAdmin
       ? [
           { to: "/admin", icon: "school", label: "전교", end: true },
@@ -42,7 +43,7 @@ export function StaffApp({ staff, isSuper, onSuper }: { staff: StaffDoc; isSuper
           <Route path="/" element={<Overview />} />
           <Route path="/review" element={<Review />} />
           <Route path="/feed" element={<Feed />} />
-          <Route path="/bulk" element={<Bulk />} />
+          <Route path="/bulk" element={canBulk ? <Bulk /> : <Navigate to="/" replace />} />
           <Route path="/student/:sid" element={<StudentDetail />} />
           <Route path="/me" element={<MyRoles staff={staff} />} />
           {isAdmin && (

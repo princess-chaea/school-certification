@@ -50,7 +50,7 @@ export function Records({ student }: { student: StudentDoc }) {
                   {r.status === "pending" && <span className="chip warn">선생님 확인 대기</span>}
                   {r.status === "active" && <span className="chip ok">인정 {r.reviewedByName ? `· ${r.reviewedByName}` : ""}</span>}
                   {r.status === "deleted" && <span className="chip red">인정되지 않음{r.deleteReason ? `: ${r.deleteReason}` : ""}</span>}
-                  {r.source === "teacher" && <span className="chip">선생님 관찰 {r.count}회</span>}
+                  {r.source === "teacher" && <span className="chip">{r.recognitionMode === "offline" ? "오프라인 인정" : "선생님 관찰"} {r.count}{task?.kind === "sentences" ? "문장" : task ? "회" : def?.unit ?? "회"}</span>}
                   {r.activityType && <span className="chip gray">{r.activityType}</span>}
                 </div>
                 {Object.entries(r.fields ?? {}).filter(([, v]) => v).map(([k, v]) => <div key={k} className="small"><span className="muted">{(task?.fields ?? def?.fields ?? []).find((f) => f.key === k)?.label ?? k}:</span> {v}</div>)}

@@ -72,7 +72,8 @@ export function StudentHome({ student }: { student: StudentDoc }) {
             <div key={r.id} className="card flat row" style={{ alignItems: "flex-start" }}>
               <PixelIcon name={def?.icon ?? "star"} size={28} />
               <div style={{ flex: 1 }}>
-                <div className="small"><b>{def?.name ?? r.program}</b> <span className="tiny">{r.activityDate ?? fmtDate(r.createdAt)}</span> {r.status === "pending" ? <span className="chip warn">확인 대기</span> : <span className="chip ok">인정</span>}</div>
+                <div className="small"><b>{def?.name ?? r.program}{r.task ? ` · ${def?.tasks?.find((task) => task.id === r.task)?.name ?? r.task}` : ""}</b> <span className="tiny">{r.activityDate ?? fmtDate(r.createdAt)}</span> {r.status === "pending" ? <span className="chip warn">확인 대기</span> : <span className="chip ok">인정</span>}</div>
+                {r.source === "teacher" && <div className="tiny">{r.recognitionMode === "offline" ? "오프라인 인정" : "선생님 관찰"} · {r.count}{r.task ? (def?.tasks?.find((task) => task.id === r.task)?.kind === "sentences" ? "문장" : "회") : def?.unit ?? "회"}</div>}
                 {r.status === "deleted" && r.deleteReason && <div className="small muted">선생님: {r.deleteReason}</div>}
               </div>
             </div>

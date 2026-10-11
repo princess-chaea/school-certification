@@ -86,7 +86,7 @@ service cloud.firestore {
         // 승인 대기 중에는 본인이 소속 정보만 수정 가능
         allow update: if isAdmin()
           || (signedIn() && request.auth.uid == uid
-              && onlyChanges(['name', 'homeroom', 'subject', 'grade', 'classNo', 'grades', 'programs', 'updatedAt']));
+              && (onlyChanges(['name', 'updatedAt']) || (resource.data.get('bulkRecognitionPrograms', []).size() == 0 && onlyChanges(['name', 'homeroom', 'subject', 'grade', 'classNo', 'grades', 'programs', 'updatedAt']))));
         allow delete: if isAdmin();
       }
 
@@ -106,8 +106,16 @@ service cloud.firestore {
               && request.resource.data.feedback is string && request.resource.data.feedback.size() <= 300);
         // 담임은 계정 없는 학생(1~2학년 등)을 자기 반에 직접 추가 가능 (계정 있는 학생은 관리자 CSV 등록)
         allow create: if isStaff() && isHomeroomOf(request.resource.data.grade, request.resource.data.classNo)
-          && request.resource.data.email == '' && request.resource.data.year == currentYear();
-        allow delete: if isAdmin() || (isStaff() && isHomeroomOf(resource.data.grade, resource.data.classNo) && resource.data.email == '');
+          && request.resource.data.keys().hasOnly(['sid', 'email', 'year', 'grade', 'classNo', 'number', 'name', 'active', 'hasAccount', 'createdAt', 'updatedAt'])
+          && request.resource.data.sid == sid
+          && request.resource.data.email == '' && request.resource.data.year == currentYear()
+          && request.resource.data.hasAccount == false && request.resource.data.active == true
+          && request.resource.data.grade is int && request.resource.data.grade >= 1 && request.resource.data.grade <= 6
+          && request.resource.data.classNo is int && request.resource.data.classNo >= 1 && request.resource.data.classNo <= 99
+          && request.resource.data.number is int && request.resource.data.number >= 0
+          && request.resource.data.name is string && request.resource.data.name.size() <= 30;
+        // 학생 삭제는 연결 기록까지 정리하는 deleteStudent callable만 처리한다.
+        allow delete: if false;
       }
 
       // 활동 제출 기록
@@ -115,19 +123,17 @@ service cloud.firestore {
         allow get, list: if (isStudent() && resource.data.sid == mySid())
           || canManage(resource.data.grade, resource.data.classNo, resource.data.program);
 
-        // 학생 제출은 submitEvidence callable만 생성한다. 서버가 명단·증빙·속도·중복을 검증한다.
-
-        // 교사 일괄 체크(태블릿 없는 학생 관찰 기록)
-        allow create: if isStaff()
-          && request.resource.data.source == 'teacher'
-          && request.resource.data.status == 'active'
-          && request.resource.data.year == currentYear()
-          && request.resource.data.count is int && request.resource.data.count >= 1 && request.resource.data.count <= 100
-          && canManage(request.resource.data.grade, request.resource.data.classNo, request.resource.data.program);
+        // 학생 제출·교사 일괄 인정은 서버 callable에서만 생성한다.
+        allow create: if false;
 
         // 교사: 승인(active)·반려/제외(deleted)·복구
         allow update: if canManage(resource.data.grade, resource.data.classNo, resource.data.program)
           && request.resource.data.status in ['active', 'deleted', 'pending']
+          // 교사 인정 기록 복구는 새 인정과 같이 현재 항목별 권한이 필요하다.
+          && (resource.data.get('source', '') != 'teacher'
+              || resource.data.status == 'active' || request.resource.data.status != 'active'
+              || isAdmin()
+              || (isStaff() && resource.data.program in staffDoc().get('bulkRecognitionPrograms', [])))
           && onlyChanges(['status', 'deletedBy', 'deletedAt', 'deleteReason', 'reviewedBy', 'reviewedByName', 'reviewedAt', 'teacherComment']);
         allow delete: if isAdmin();
       }

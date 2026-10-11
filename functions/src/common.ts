@@ -45,7 +45,7 @@ export async function loadSchool(schoolId: string): Promise<SchoolInfo & { statu
 }
 
 export interface StaffDoc {
-  role: "teacher" | "admin"; // admin = 학교 담당자
+  role: "teacher" | "admin"; // admin = 관리자
   status: "pending" | "active" | "rejected";
   name?: string;
   homeroom?: boolean; // 담임
@@ -54,7 +54,9 @@ export interface StaffDoc {
   subject?: boolean; // 전담
   grades?: number[];
   programs?: string[];
+  subjectClasses?: { grade: number; classNo: number }[];
   bulkRecognitionPrograms?: string[];
+  certificationPrograms?: string[]; // 관리자 지정: 항목별 익명 인증 현황 조회
 }
 
 export async function isSuper(uid?: string) {

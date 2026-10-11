@@ -8,16 +8,16 @@ import type { StudentDoc } from "../../lib/types";
 import { MedalBadge, Empty } from "../../components/ui";
 import { PageHeader } from "../../components/Layout";
 import { PixelIcon } from "../../components/Pixel";
-import { ScopeBar, useScope } from "./scope";
+import { ScopeBar, useScope, canTeachClassProgram } from "./scope";
 import { MEDAL_LABEL, isCertified, activePrograms, type Medal, type ProgramDef } from "../../../shared/domain";
 
 export function useScopedStudents() {
   const schoolId = useSchoolId();
-  const { scope } = useScope();
+  const { scope, staff, canQuery } = useScope();
   const cons: QueryConstraint[] = [where("grade", "==", scope.grade)];
   if (scope.classNo) cons.push(where("classNo", "==", scope.classNo), orderBy("number"));
-  const res = useCollection<StudentDoc & { id: string }>(sp(schoolId, "students"), cons, [schoolId, scope.grade, scope.classNo]);
-  const rows = res.rows?.filter((s) => s.active !== false).sort((a, b) => a.classNo - b.classNo || a.number - b.number) ?? null;
+  const res = useCollection<StudentDoc & { id: string }>(canQuery ? sp(schoolId, "students") : null, cons, [schoolId, scope.grade, scope.classNo, canQuery]);
+  const rows = canQuery ? res.rows?.filter((s) => s.active !== false && s.grade === scope.grade && (!scope.classNo || s.classNo === scope.classNo) && canTeachClassProgram(staff, s.grade, s.classNo, scope.program)).sort((a, b) => a.classNo - b.classNo || a.number - b.number) ?? null : [];
   return { rows, error: res.error };
 }
 
@@ -75,7 +75,7 @@ export function Overview() {
       {rows === null ? (
         <div className="muted">불러오는 중…</div>
       ) : list.length === 0 ? (
-        <Empty icon="users">명단에 학생이 없어요. 학교 담당자에게 명단(CSV) 등록을 요청하세요.</Empty>
+        <Empty icon="users">명단에 학생이 없어요. 관리자에게 명단(CSV) 등록을 요청하세요.</Empty>
       ) : (
         <>
           <div className="grid grid-4">

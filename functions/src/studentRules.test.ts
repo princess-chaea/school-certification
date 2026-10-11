@@ -7,6 +7,27 @@ const rules = readFileSync(new URL("../../firestore.rules", import.meta.url), "u
 const studentRules = rules.split("match /students/{sid} {")[1].split("// 활동 제출 기록")[0];
 const createRule = studentRules.split("allow create:")[1].split(";")[0];
 
+test("certification assignments cannot be self-granted and archived PII is admin-only", () => {
+  const staffRules = rules.split("match /staff/{uid} {")[1].split("// 학생 명단")[0];
+  const selfUpdate = staffRules.split("|| (signedIn()")[1];
+  assert.ok(selfUpdate);
+  assert.equal(selfUpdate.includes("'certificationPrograms'"), false);
+  assert.ok(selfUpdate.includes("'subjectClasses'"));
+  assert.match(selfUpdate, /request.resource.data.get\('subjectClasses', \[\]\) is list/);
+  assert.match(selfUpdate, /request.resource.data.get\('subjectClasses', \[\]\).size\(\) <= 594/);
+  const archiveRules = rules.split("match /years/{year}/{rest=**} {")[1].split("match /aiUsage/")[0];
+  assert.equal((archiveRules.match(/allow read: if isAdmin\(\);/g) ?? []).length, 2);
+  assert.equal(archiveRules.includes("isStaff()"), false);
+});
+
+test("subject reads and approvals intersect selected grades, classes and programs", () => {
+  assert.match(rules, /let classes = u.get\('subjectClasses', \[\]\);/);
+  assert.match(rules, /classes is list && \(classes.size\(\) == 0 \|\| \{'grade': g, 'classNo': c\} in classes\)/);
+  assert.match(rules, /return isSubjectClass\(g, c\) && program in staffDoc\(\).get\('programs', \[\]\);/);
+  assert.match(rules, /isHomeroomOf\(g, c\) \|\| isSubjectClass\(g, c\)/);
+  assert.match(rules, /isHomeroomOf\(g, c\) \|\| isSubjectFor\(g, c, program\)/);
+});
+
 test("accountless roster creation has a closed field list excluding server-derived recognition state", () => {
   const fieldList = createRule.match(/keys\(\)\.hasOnly\(\[([^\]]+)\]\)/)?.[1];
   assert.ok(fieldList, "student creation must have a closed field allowlist");

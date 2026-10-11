@@ -24,6 +24,7 @@ vi.mock("./Overview", () => ({ Overview: () => <p>overview-page</p> }));
 vi.mock("./Feed", () => ({ Feed: () => <p>feed-page</p> }));
 vi.mock("./Review", () => ({ Review: () => <p>review-page</p> }));
 vi.mock("./Bulk", () => ({ Bulk: () => <p>bulk-page</p> }));
+vi.mock("./CertificationStatus", () => ({ CertificationStatus: () => <p>certification-status-page</p> }));
 vi.mock("./StudentDetail", () => ({ StudentDetail: () => null }));
 vi.mock("./MyRoles", () => ({ MyRoles: () => <p>roles-page</p> }));
 vi.mock("../admin/AdminHome", () => ({ AdminHome: () => <p>admin-home-page</p> }));
@@ -56,7 +57,7 @@ describe("staff navigation permissions", () => {
   it("renders administrator management links and bulk access without individual grants", () => {
     const html = render({ ...teacher, role: "admin" }, "/bulk");
     expect(desktopLinks(html)).toEqual([
-      "/", "/review", "/feed", "/bulk", "/admin", "/admin/programs",
+      "/", "/review", "/feed", "/bulk", "/certification-status", "/admin", "/admin/programs",
       "/admin/members", "/admin/certs", "/admin/settings", "/me",
     ]);
     expect(html).toContain("bulk-page");
@@ -77,6 +78,29 @@ describe("staff navigation permissions", () => {
     expect(desktopLinks(html)).toEqual(["/", "/review", "/feed", "/bulk", "/me"]);
     expect(html).toContain("bulk-page");
     expect(redirect).not.toHaveBeenCalled();
+  });
+
+  it("allows overlapping teaching and certification duties", () => {
+    const html = render({ ...teacher, subject: true, certificationPrograms: ["english"] }, "/certification-status");
+    expect(desktopLinks(html)).toEqual(["/", "/review", "/feed", "/certification-status", "/me"]);
+    expect(html).toContain("certification-status-page");
+    expect(html).toContain("인증 업무 담당");
+  });
+
+  it("limits certification-only staff to status and their roles", () => {
+    const html = render({ ...teacher, homeroom: false, certificationPrograms: ["english"], bulkRecognitionPrograms: ["english"] }, "/certification-status");
+    expect(desktopLinks(html)).toEqual(["/certification-status", "/me"]);
+    expect(html).toContain("certification-status-page");
+  });
+
+  it.each(["/", "/review", "/feed", "/student/example", "/bulk"])("guards certification-only access to %s", (path) => {
+    render({ ...teacher, homeroom: false, certificationPrograms: ["english"] }, path);
+    expect(redirect.mock.calls[0]?.[0]).toMatchObject({ to: "/certification-status", replace: true });
+  });
+
+  it("guards certification status from teachers with no assigned certification duty", () => {
+    expect(render(teacher, "/certification-status")).not.toContain("certification-status-page");
+    expect(redirect.mock.calls[0]?.[0]).toMatchObject({ to: "/", replace: true });
   });
 
   it.each(["/admin", "/admin/programs", "/admin/members", "/admin/certs", "/admin/settings"])(

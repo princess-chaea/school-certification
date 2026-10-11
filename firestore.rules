@@ -53,15 +53,20 @@ service cloud.firestore {
         let u = staffDoc();
         return u.get('homeroom', false) == true && u.grade == g && u.classNo == c;
       }
-      function isSubjectFor(g, program) {
+      function isSubjectClass(g, c) {
         let u = staffDoc();
-        return u.get('subject', false) == true && g in u.get('grades', []) && program in u.get('programs', []);
+        let classes = u.get('subjectClasses', []);
+        return u.get('subject', false) == true && g in u.get('grades', [])
+          && classes is list && (classes.size() == 0 || {'grade': g, 'classNo': c} in classes);
+      }
+      function isSubjectFor(g, c, program) {
+        return isSubjectClass(g, c) && program in staffDoc().get('programs', []);
       }
       function canSeeClass(g, c) {
-        return isAdmin() || (isStaff() && (isHomeroomOf(g, c) || (staffDoc().get('subject', false) == true && g in staffDoc().get('grades', []))));
+        return isAdmin() || (isStaff() && (isHomeroomOf(g, c) || isSubjectClass(g, c)));
       }
       function canManage(g, c, program) {
-        return isAdmin() || (isStaff() && (isHomeroomOf(g, c) || isSubjectFor(g, program)));
+        return isAdmin() || (isStaff() && (isHomeroomOf(g, c) || isSubjectFor(g, c, program)));
       }
 
       // 학교 정보(이름·로고·학교장)는 로그인 전후 화면에 쓰이므로 공개 읽기
@@ -86,7 +91,10 @@ service cloud.firestore {
         // 승인 대기 중에는 본인이 소속 정보만 수정 가능
         allow update: if isAdmin()
           || (signedIn() && request.auth.uid == uid
-              && (onlyChanges(['name', 'updatedAt']) || (resource.data.get('bulkRecognitionPrograms', []).size() == 0 && onlyChanges(['name', 'homeroom', 'subject', 'grade', 'classNo', 'grades', 'programs', 'updatedAt']))));
+              && (onlyChanges(['name', 'updatedAt']) || (resource.data.get('bulkRecognitionPrograms', []).size() == 0
+                  && request.resource.data.get('subjectClasses', []) is list
+                  && request.resource.data.get('subjectClasses', []).size() <= 594
+                  && onlyChanges(['name', 'homeroom', 'subject', 'grade', 'classNo', 'grades', 'programs', 'subjectClasses', 'updatedAt']))));
         allow delete: if isAdmin();
       }
 
@@ -158,11 +166,11 @@ service cloud.firestore {
 
       // 학년도 보관함·AI 사용량 (Cloud Functions 전용)
       match /years/{year}/{rest=**} {
-        allow read: if isStaff() || isSuper();
+        allow read: if isAdmin();
         allow write: if false;
       }
       match /years/{year} {
-        allow read: if isStaff() || isSuper();
+        allow read: if isAdmin();
         allow write: if false;
       }
       match /aiUsage/{docId} {

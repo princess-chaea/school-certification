@@ -23,7 +23,7 @@ export function Feed() {
   const schoolId = useSchoolId();
   const school = useSchool();
   const config = useConfig();
-  const { scope, staff } = useScope();
+  const { scope, staff, canQuery } = useScope();
   const { rows: students } = useScopedStudents();
   const [onlySuspect, setOnlySuspect] = useState(false);
   const [showDeleted, setShowDeleted] = useState(false);
@@ -36,28 +36,31 @@ export function Feed() {
   if (scope.classNo) cons.push(where("classNo", "==", scope.classNo));
   if (scope.program) cons.push(where("program", "==", scope.program));
   cons.push(orderBy("createdAt", "desc"), limit(max));
-  const { rows, error } = useCollection<Submission>(sp(schoolId, "submissions"), cons, [schoolId, school.year, scope.grade, scope.classNo, scope.program, max]);
+  const { rows, error } = useCollection<Submission>(canQuery ? sp(schoolId, "submissions") : null, cons, [schoolId, school.year, scope.grade, scope.classNo, scope.program, max, canQuery]);
 
   // 영어 문장 녹음(검사 요청·인정·다시 하기): 최근 바뀐 것부터, 학생·과제별로 묶어 함께 보여 줌
   const eCons: QueryConstraint[] = [where("year", "==", school.year), where("grade", "==", scope.grade)];
   if (scope.classNo) eCons.push(where("classNo", "==", scope.classNo));
   if (scope.program) eCons.push(where("program", "==", scope.program));
   eCons.push(orderBy("updatedAt", "desc"), limit(max * 5));
-  const { rows: items } = useCollection<EnglishItem>(sp(schoolId, "englishItems"), eCons, [schoolId, school.year, scope.grade, scope.classNo, scope.program, max]);
+  const { rows: items } = useCollection<EnglishItem>(canQuery ? sp(schoolId, "englishItems") : null, eCons, [schoolId, school.year, scope.grade, scope.classNo, scope.program, max, canQuery]);
+  const matchesScope = (r: Submission | EnglishItem) => canQuery && r.grade === scope.grade && (!scope.classNo || r.classNo === scope.classNo) && (!scope.program || r.program === scope.program);
+  const scopedRows = (rows ?? []).filter(matchesScope);
+  const scopedItems = (items ?? []).filter(matchesScope);
 
   const names = useMemo(() => new Map((students ?? []).map((s) => [s.id, `${s.classNo}-${s.number} ${s.name}`])), [students]);
   const ai = useAiReviews(
-    (rows ?? []).map((r) => r.id),
-    (rows ?? []).filter((r) => config.ai.enabled && r.source === "student" &&
+    scopedRows.map((r) => r.id),
+    scopedRows.filter((r) => config.ai.enabled && r.source === "student" &&
       (!r.createdAt || r.createdAt.toMillis() > Date.now() - 2 * 60_000)).map((r) => r.id),
   );
   const suspect = (id: string) => Boolean(ai.get(id) && ai.get(id)!.verdict !== "ok");
-  const list = (rows ?? []).filter((r) => (showDeleted ? true : r.status !== "deleted")).filter((r) => (onlySuspect ? suspect(r.id) : true));
+  const list = scopedRows.filter((r) => (showDeleted ? true : r.status !== "deleted")).filter((r) => (onlySuspect ? suspect(r.id) : true));
   const entries = [
     ...list.map((r) => ({ at: recordTime(r.createdAt), sub: r, group: null })),
-    ...(onlySuspect ? [] : englishGroups(items, true).map((g) => ({ at: g.at, sub: null, group: g }))),
+    ...(onlySuspect ? [] : englishGroups(scopedItems, true).map((g) => ({ at: g.at, sub: null, group: g }))),
   ].sort((a, b) => b.at - a.at);
-  const suspectCount = (rows ?? []).filter((r) => r.status !== "deleted" && suspect(r.id)).length;
+  const suspectCount = scopedRows.filter((r) => r.status !== "deleted" && suspect(r.id)).length;
 
   async function remove(id: string) {
     await updateDoc(doc(db, sp(schoolId, `submissions/${id}`)), { status: "deleted", deletedBy: staff.name, deletedAt: serverTimestamp(), deleteReason: reason.trim() || "비정상 기록" });

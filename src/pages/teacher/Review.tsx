@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { doc, limit, orderBy, serverTimestamp, where, writeBatch, type QueryConstraint } from "firebase/firestore";
 import { db } from "../../firebase";
 import { BUNDLED_SETS, useAiReviews, useCollection } from "../../lib/data";
@@ -44,7 +44,7 @@ function EvidenceQueue() {
   const schoolId = useSchoolId();
   const school = useSchool();
   const config = useConfig();
-  const { scope, staff } = useScope();
+  const { scope, staff, canQuery } = useScope();
   const { rows: students } = useScopedStudents();
   const [picked, setPicked] = useState<Set<string>>(new Set());
   const [zoom, setZoom] = useState<string | null>(null);
@@ -54,9 +54,10 @@ function EvidenceQueue() {
   if (scope.classNo) cons.push(where("classNo", "==", scope.classNo));
   if (scope.program) cons.push(where("program", "==", scope.program));
   cons.push(where("status", "==", "pending"), orderBy("createdAt", "asc"), limit(100));
-  const { rows, error } = useCollection<Submission>(sp(schoolId, "submissions"), cons, [schoolId, school.year, scope.grade, scope.classNo, scope.program]);
+  const { rows, error } = useCollection<Submission>(canQuery ? sp(schoolId, "submissions") : null, cons, [schoolId, school.year, scope.grade, scope.classNo, scope.program, canQuery]);
   const names = useMemo(() => new Map((students ?? []).map((s) => [s.id, `${s.classNo}-${s.number} ${s.name}`])), [students]);
-  const list = rows ?? [];
+  const list = canQuery ? (rows ?? []).filter((r) => r.grade === scope.grade && (!scope.classNo || r.classNo === scope.classNo) && (!scope.program || r.program === scope.program)) : [];
+  useEffect(() => { setPicked(new Set()); setRejecting(null); }, [scope.grade, scope.classNo, scope.program, canQuery]);
   const [onlyFlag, setOnlyFlag] = useState(false);
   const ai = useAiReviews(
     list.map((r) => r.id),
@@ -69,7 +70,7 @@ function EvidenceQueue() {
 
   async function decide(ids: string[], approve: boolean, why = "") {
     const batch = writeBatch(db);
-    ids.forEach((id) =>
+    ids.filter((id) => list.some((r) => r.id === id)).forEach((id) =>
       batch.update(doc(db, sp(schoolId, `submissions/${id}`)), approve
         ? { status: "active", reviewedBy: staff.uid, reviewedByName: staff.name, reviewedAt: serverTimestamp() }
         : { status: "deleted", deletedBy: staff.name, deletedAt: serverTimestamp(), deleteReason: why || "다시 올려 주세요" }),
@@ -140,7 +141,7 @@ function SentenceQueue() {
   const schoolId = useSchoolId();
   const school = useSchool();
   const config = useConfig();
-  const { scope, staff } = useScope();
+  const { scope, staff, canQuery } = useScope();
   const { rows: students } = useScopedStudents();
   const [picked, setPicked] = useState<Set<string>>(new Set());
   const [noteFor, setNoteFor] = useState<string | null>(null);
@@ -149,9 +150,10 @@ function SentenceQueue() {
   if (scope.classNo) cons.push(where("classNo", "==", scope.classNo));
   if (scope.program) cons.push(where("program", "==", scope.program));
   cons.push(where("status", "==", "requested"), orderBy("requestedAt", "asc"));
-  const { rows, error } = useCollection<EnglishItem>(sp(schoolId, "englishItems"), cons, [schoolId, school.year, scope.grade, scope.classNo, scope.program]);
+  const { rows, error } = useCollection<EnglishItem>(canQuery ? sp(schoolId, "englishItems") : null, cons, [schoolId, school.year, scope.grade, scope.classNo, scope.program, canQuery]);
   const names = useMemo(() => new Map((students ?? []).map((s) => [s.id, `${s.classNo}-${s.number} ${s.name}`])), [students]);
-  const list = rows ?? [];
+  const list = canQuery ? (rows ?? []).filter((r) => r.grade === scope.grade && (!scope.classNo || r.classNo === scope.classNo) && (!scope.program || r.program === scope.program)) : [];
+  useEffect(() => { setPicked(new Set()); setNoteFor(null); }, [scope.grade, scope.classNo, scope.program, canQuery]);
 
   function sentence(i: EnglishItem) {
     if (i.custom?.en) return { en: i.custom.en, ko: i.custom.ko, custom: true };
@@ -160,7 +162,7 @@ function SentenceQueue() {
   }
   async function decide(ids: string[], status: "checked" | "retry", teacherNote = "") {
     const batch = writeBatch(db);
-    ids.forEach((id) => batch.update(doc(db, sp(schoolId, `englishItems/${id}`)), { status, checkedBy: staff.uid, checkedByName: staff.name, checkedAt: serverTimestamp(), teacherNote, updatedAt: serverTimestamp() }));
+    ids.filter((id) => list.some((r) => r.id === id)).forEach((id) => batch.update(doc(db, sp(schoolId, `englishItems/${id}`)), { status, checkedBy: staff.uid, checkedByName: staff.name, checkedAt: serverTimestamp(), teacherNote, updatedAt: serverTimestamp() }));
     await batch.commit();
     setPicked(new Set());
     setNoteFor(null);

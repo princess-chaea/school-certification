@@ -130,7 +130,7 @@ export const startNewYear = onCall({ region: REGION, timeoutSeconds: 540, memory
   const teachers = await db.collection(sp(schoolId, "staff")).where("homeroom", "==", true).get();
   for (const t of teachers.docs) {
     if (t.get("status") === "active") {
-      // 새 학년도: 담임 학급을 다시 고르도록 담임 정보만 비운다 (학교 담당자 권한은 유지)
+      // 새 학년도: 담임 학급을 다시 고르도록 담임 정보만 비운다 (관리자 권한은 유지)
       batch.update(t.ref, { homeroom: false, grade: null, classNo: null, previousClass: `${t.get("grade")}-${t.get("classNo")}` });
       if (++n >= 400) await flush();
     }
@@ -341,7 +341,7 @@ export const deleteProgramData = onCall({ region: REGION, timeoutSeconds: 540, m
   return { submissions, englishItems };
 });
 
-/** 학생 완전 삭제 (테스트 계정·잘못 등록한 학생): 학교 담당자 또는 그 반 담임 — 기록·녹음·사진까지 모두 지움 */
+/** 학생 완전 삭제 (테스트 계정·잘못 등록한 학생): 관리자 또는 그 반 담임 — 기록·녹음·사진까지 모두 지움 */
 export const deleteStudent = onCall({ region: REGION, timeoutSeconds: 300, memory: "512MiB" }, async (req) => {
   const schoolId = requireSchoolId(req.data);
   const me = await requireStaff(req, schoolId);
@@ -352,7 +352,7 @@ export const deleteStudent = onCall({ region: REGION, timeoutSeconds: 300, memor
   if (!snap.exists) throw new HttpsError("not-found", "이미 삭제된 학생이에요.");
   const s = snap.data() as { grade?: number; classNo?: number; uid?: string };
   const isHomeroom = me.homeroom === true && me.grade === s.grade && me.classNo === s.classNo;
-  if (me.role !== "admin" && !isHomeroom) throw new HttpsError("permission-denied", "학교 담당자나 이 반 담임 선생님만 삭제할 수 있어요.");
+  if (me.role !== "admin" && !isHomeroom) throw new HttpsError("permission-denied", "관리자나 이 반 담임 선생님만 삭제할 수 있어요.");
   const bucket = getStorage().bucket();
   let submissions = 0;
   let englishItems = 0;

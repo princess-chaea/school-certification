@@ -133,3 +133,45 @@ test("pending teacher with retained bulk grants cannot use open signup to activa
   assert.deepEqual(await join("pending"), {status:"pending",schoolId:"7000001",created:false});
   assert.deepEqual(documents.get(path), existing);
 });
+
+
+test("unassigned signup does not accept self-granted certification oversight", async (t) => {
+  const { documents } = fixture(t, { [schoolPath]: school });
+  await join("lead", false, { homeroom: null, subject: null, certificationPrograms: ["reading"] });
+  const staff = documents.get(`${schoolPath}/staff/lead`);
+  assert.equal(staff?.status, "active");
+  assert.equal(staff?.homeroom, false);
+  assert.equal(staff?.subject, false);
+  assert.equal(staff?.certificationPrograms, undefined);
+});
+
+test("subject signup stores sorted specific classes and keeps empty as all selected grades", async (t) => {
+  const { documents } = fixture(t, { [schoolPath]: school });
+  await join("specific", false, { subject: { grades: [6, 4], programs: ["english"], subjectClasses: [{ grade: 6, classNo: 2 }, { grade: 4, classNo: 1 }, { grade: 4, classNo: 1 }] } });
+  assert.deepEqual(documents.get(`${schoolPath}/staff/specific`)?.subjectClasses, [{ grade: 4, classNo: 1 }, { grade: 6, classNo: 2 }]);
+  await join("all", false, { subject: { grades: [4], programs: ["english"] } });
+  assert.deepEqual(documents.get(`${schoolPath}/staff/all`)?.subjectClasses, []);
+});
+
+test("subject signup rejects classes outside selected grades or invalid class numbers", async (t) => {
+  fixture(t, { [schoolPath]: school });
+  for (const subjectClasses of [[{ grade: 5, classNo: 1 }], [{ grade: 4, classNo: 21 }], [{ grade: 4, classNo: 1.5 }], "all"]) {
+    await assert.rejects(join("invalid", false, { subject: { grades: [4], programs: ["english"], subjectClasses } }), { code: "invalid-argument" });
+  }
+});
+
+test("rejoin preserves certification oversight and specific class assignments", async (t) => {
+  const path = `${schoolPath}/staff/lead`;
+  const existing = { role: "teacher", status: "active", subject: true, grades: [4], programs: ["english"], subjectClasses: [{ grade: 4, classNo: 2 }], certificationPrograms: ["reading"] };
+  const { documents } = fixture(t, { [schoolPath]: school, [path]: existing });
+  await join("lead", false, { subject: { grades: [1, 2, 3, 4, 5, 6], programs: ["reading"] }, certificationPrograms: ["english"] });
+  assert.deepEqual(documents.get(path), existing);
+});
+
+test("pending certification lead cannot reopen access through signup", async (t) => {
+  const path = `${schoolPath}/staff/lead`;
+  const existing = { role: "teacher", status: "pending", certificationPrograms: ["reading"] };
+  const { documents } = fixture(t, { [schoolPath]: school, [path]: existing });
+  assert.deepEqual(await join("lead"), { status: "pending", schoolId: "7000001", created: false });
+  assert.deepEqual(documents.get(path), existing);
+});

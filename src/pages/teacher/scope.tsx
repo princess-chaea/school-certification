@@ -6,7 +6,7 @@ import { useConfig } from "../../lib/config";
 import { activePrograms } from "../../../shared/domain";
 import { PixelIcon } from "../../components/Pixel";
 
-/** 교사가 지금 보고 있는 범위. 역할이 겹칠 수 있다(학교 담당자 / 담임 / 전담) */
+/** 교사가 지금 보고 있는 범위. 관리자·담임·전담 업무는 겹칠 수 있다. */
 export interface Scope {
   grade: number;
   classNo: number | null; // null = 학년 전체
@@ -23,6 +23,8 @@ interface ScopeCtxValue {
   programRequired: boolean;
   allowedPrograms: string[] | null; // null = 전체
   canSeeAllClasses: boolean;
+  allowedClasses: number[];
+  canQuery: boolean;
 }
 
 const Ctx = createContext<ScopeCtxValue | null>(null);
@@ -32,39 +34,58 @@ export function useScope() {
   return v;
 }
 
-export function ScopeProvider({ staff, children }: { staff: StaffDoc; children: ReactNode }) {
+export function canTeachClassProgram(staff: StaffDoc, grade: number, classNo: number, program?: string | null) {
+  return staff.role === "admin" || Boolean(
+    (staff.homeroom && staff.grade === grade && staff.classNo === classNo) ||
+    (staff.subject && staff.grades?.includes(grade) && (!program || staff.programs?.includes(program)) &&
+      (!staff.subjectClasses?.length || staff.subjectClasses.some((c) => c.grade === grade && c.classNo === classNo))),
+  );
+}
+
+export function resolveTeachingScope(staff: StaffDoc, requested: Scope, programs: Array<{ id: string; grades: number[] }>) {
   const isAdmin = staff.role === "admin";
-  const home = staff.homeroom && staff.grade ? { grade: staff.grade, classNo: staff.classNo! } : null;
-  const subjGrades = staff.subject ? staff.grades ?? [] : [];
-  const allowedGrades = isAdmin ? GRADES : [...new Set([...(home ? [home.grade] : []), ...subjGrades])].sort();
-  const [scope, setScope] = useState<Scope>(() => {
-    if (home) return { grade: home.grade, classNo: home.classNo, program: null };
-    return { grade: allowedGrades[0] ?? 1, classNo: null, program: isAdmin ? null : staff.programs?.[0] ?? null };
-  });
+  const home = staff.homeroom && staff.grade && staff.classNo ? { grade: staff.grade, classNo: staff.classNo } : null;
+  const restricted = Boolean(staff.subjectClasses?.length);
+  const subjGrades = staff.subject ? (staff.grades ?? []).filter((g) =>
+    programs.some((p) => staff.programs?.includes(p.id) && p.grades.includes(g)) &&
+    (!restricted || staff.subjectClasses?.some((c) => c.grade === g && c.classNo > 0)),
+  ) : [];
+  const allowedGrades = isAdmin ? GRADES : [...new Set([...(home ? [home.grade] : []), ...subjGrades])].sort((a, b) => a - b);
+  const grade = allowedGrades.includes(requested.grade) ? requested.grade : home?.grade ?? allowedGrades[0] ?? 1;
+  const canSeeAllClasses = isAdmin || (subjGrades.includes(grade) && !restricted);
+  const allowedClasses = [...new Set([
+    ...(canSeeAllClasses ? classesOf(grade) : subjGrades.includes(grade) ? (staff.subjectClasses ?? []).filter((c) => c.grade === grade).map((c) => c.classNo) : []),
+    ...(home?.grade === grade ? [home.classNo] : []),
+  ])].sort((a, b) => a - b);
+  const classNo = requested.classNo && allowedClasses.includes(requested.classNo) ? requested.classNo : canSeeAllClasses ? null : home?.grade === grade ? home.classNo : allowedClasses[0] ?? null;
+  const scope: Scope = { grade, classNo, program: requested.program };
   const inHome = Boolean(home && scope.grade === home.grade && scope.classNo === home.classNo);
   const programRequired = !isAdmin && !inHome;
-  const allowedPrograms = programRequired ? staff.programs ?? [] : null;
-  const canSeeAllClasses = isAdmin || subjGrades.includes(scope.grade);
+  const eligiblePrograms = programs.filter((p) => p.grades.includes(grade));
+  const allowedPrograms = programRequired ? eligiblePrograms.filter((p) => staff.programs?.includes(p.id)).map((p) => p.id) : null;
+  if (programRequired && (!scope.program || !allowedPrograms?.includes(scope.program))) scope.program = allowedPrograms?.[0] ?? null;
+  else if (scope.program && !eligiblePrograms.some((p) => p.id === scope.program)) scope.program = null;
+  return { scope, isAdmin, allowedGrades, programRequired, allowedPrograms, canSeeAllClasses, allowedClasses, canQuery: allowedGrades.length > 0 && (!programRequired || Boolean(allowedPrograms?.length)) };
+}
+
+export function ScopeProvider({ staff, children }: { staff: StaffDoc; children: ReactNode }) {
+  const config = useConfig();
+  const [requested, setScope] = useState<Scope>(() => ({ grade: staff.homeroom ? staff.grade ?? 0 : 0, classNo: staff.homeroom ? staff.classNo ?? null : null, program: null }));
   const value: ScopeCtxValue = {
     staff,
-    scope: programRequired && (!scope.program || !allowedPrograms?.includes(scope.program)) ? { ...scope, program: allowedPrograms?.[0] ?? null } : scope,
+    ...resolveTeachingScope(staff, requested, activePrograms(config)),
     setScope,
-    isAdmin,
-    allowedGrades,
-    programRequired,
-    allowedPrograms,
-    canSeeAllClasses,
   };
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;
 }
 
 /** 범위 선택 막대 (학년·반·항목) */
 export function ScopeBar({ showProgram = true, only }: { showProgram?: boolean; only?: (p: { kind: string; id: string }) => boolean }) {
-  const { staff, scope, setScope, isAdmin, allowedGrades, programRequired, allowedPrograms, canSeeAllClasses } = useScope();
+  const { staff, scope, setScope, isAdmin, allowedGrades, programRequired, allowedPrograms, canSeeAllClasses, allowedClasses } = useScope();
   const config = useConfig();
   const home = staff.homeroom && staff.grade ? { grade: staff.grade, classNo: staff.classNo! } : null;
   const programs = activePrograms(config, scope.grade).filter((p) => (allowedPrograms ? allowedPrograms.includes(p.id) : true)).filter((p) => (only ? only(p) : true));
-  const fixed = !isAdmin && allowedGrades.length === 1 && !canSeeAllClasses && home;
+  const fixed = !isAdmin && allowedGrades.length === 1 && !canSeeAllClasses && allowedClasses.length === 1;
   return (
     <div className="scope-bar">
       <PixelIcon name="search" size={20} />
@@ -74,13 +95,13 @@ export function ScopeBar({ showProgram = true, only }: { showProgram?: boolean; 
         <>
           <select className="input sm" value={scope.grade} onChange={(e) => {
             const g = Number(e.target.value);
-            setScope({ ...scope, grade: g, classNo: home && home.grade === g && !isAdmin && !(staff.grades ?? []).includes(g) ? home.classNo : null });
+            setScope({ ...scope, grade: g, classNo: null });
           }} aria-label="학년">
             {allowedGrades.map((g) => <option key={g} value={g}>{g}학년</option>)}
           </select>
           <select className="input sm" value={scope.classNo ?? ""} onChange={(e) => setScope({ ...scope, classNo: e.target.value ? Number(e.target.value) : null })} aria-label="반">
             {canSeeAllClasses && <option value="">전체 반</option>}
-            {classesOf(scope.grade).filter((c) => canSeeAllClasses || (home && home.grade === scope.grade && home.classNo === c)).map((c) => <option key={c} value={c}>{c}반{home && home.grade === scope.grade && home.classNo === c ? " (담임)" : ""}</option>)}
+            {allowedClasses.map((c) => <option key={c} value={c}>{c}반{home && home.grade === scope.grade && home.classNo === c ? " (담임)" : ""}</option>)}
           </select>
         </>
       )}

@@ -1,5 +1,5 @@
 import { useRef, useState } from "react";
-import { deleteDoc, doc, updateDoc, where, orderBy, writeBatch, serverTimestamp, arrayUnion, arrayRemove } from "firebase/firestore";
+import { doc, updateDoc, where, orderBy, writeBatch, serverTimestamp, arrayUnion, arrayRemove } from "firebase/firestore";
 import { httpsCallable } from "firebase/functions";
 import { db, functions } from "../../firebase";
 import { useCollection } from "../../lib/data";
@@ -85,7 +85,8 @@ export function StaffManager({ role }: { role: StaffDoc["role"] }) {
     </div>;
   };
   async function set(id: string, patch: Record<string, unknown>) {
-    await updateDoc(doc(db, sp(schoolId, `staff/${id}`)), patch);
+    const [action, value] = Object.entries(patch)[0];
+    await httpsCallable(functions, "manageStaff")({ schoolId, staffId: id, action, value });
   }
   // 관리자는 최소 1명: 마지막 관리자는 해제·삭제 불가
   const me = useSession();
@@ -104,7 +105,7 @@ export function StaffManager({ role }: { role: StaffDoc["role"] }) {
   }
   async function remove(s: StaffDoc & { id: string }) {
     if (isLastAdmin(s)) return void notice("삭제할 수 없어요", "마지막 관리자예요.\n먼저 다른 선생님을 관리자로 지정한 뒤 삭제하세요.");
-    if (await askConfirm({ title: "선생님 삭제", message: `${s.name} 선생님을 삭제할까요?\n다시 쓰려면 선생님이 새로 가입해야 해요.`, ok: "삭제", danger: true })) await deleteDoc(doc(db, sp(schoolId, `staff/${s.id}`)));
+    if (await askConfirm({ title: "선생님 삭제", message: `${s.name} 선생님을 삭제할까요?\n다시 쓰려면 선생님이 새로 가입해야 해요.`, ok: "삭제", danger: true })) await httpsCallable(functions, "manageStaff")({ schoolId, staffId: s.id, action: "delete" });
   }
   async function run(action: () => Promise<unknown>) {
     if (busy) return;

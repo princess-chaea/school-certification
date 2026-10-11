@@ -4,7 +4,7 @@ import { doc, onSnapshot, orderBy, where } from "firebase/firestore";
 import { useCollection } from "../../lib/data";
 import { sp, useSchoolId } from "../../lib/tenant";
 import { useConfig } from "../../lib/config";
-import type { EnglishItem, StudentDoc, Submission } from "../../lib/types";
+import type { EnglishItem, StaffDoc, StudentDoc, Submission } from "../../lib/types";
 import { EnglishGroupCard, englishGroups, recordTime } from "../../components/EnglishItemCard";
 import { fmtDate } from "../../lib/format";
 import { Lightbox, StorageAudio, StorageImage, toast } from "../../components/ui";
@@ -20,6 +20,11 @@ import { askText } from "../../components/Modal";
 import { deleteStudentFlow } from "../../lib/students";
 import { useNavigate } from "react-router-dom";
 import { useScopedStudents } from "./Overview";
+
+export function canEditStudentFeedback(staff: StaffDoc | null, student: StudentDoc | null) {
+  return !!staff && !!student && staff.status === "active" && (staff.role === "admin"
+    || (staff.homeroom === true && staff.grade === student.grade && staff.classNo === student.classNo));
+}
 
 export function StudentDetail() {
   const { sid = "" } = useParams();
@@ -38,6 +43,9 @@ export function StudentDetail() {
   const [zoom, setZoom] = useState<string | null>(null);
   const [note, setNote] = useState<string | null>(null); // 선생님 한마디 (편집 중인 값)
   const [busy, setBusy] = useState(false);
+  const me = session.kind === "staff" ? session.staff : null;
+  const canEditFeedback = canEditStudentFeedback(me, student);
+  useEffect(() => { setNote(null); }, [schoolId, sid, canEditFeedback]);
   const cons = student ? [where("year", "==", student.year), where("grade", "==", student.grade), where("classNo", "==", student.classNo), ...(scope.program ? [where("program", "==", scope.program)] : []), where("sid", "==", sid), orderBy("createdAt", "desc")] : [];
   const { rows } = useCollection<Submission>(student ? sp(schoolId, "submissions") : null, cons, [schoolId, sid, student?.year, student?.grade, student?.classNo, scope.program]);
   // 영어 문장 녹음 (검사 요청·인정·다시 하기) — 같은 범위 조건, 정렬은 화면에서
@@ -48,9 +56,9 @@ export function StudentDetail() {
     ...englishGroups((items ?? []).filter((r) => r.sid === sid && (!scope.program || r.program === scope.program))).map((g) => ({ at: g.at, sub: null, item: g })),
   ].sort((a, b) => b.at - a.at);
   async function saveNote(text: string) {
+    if (!canEditFeedback || busy) return;
     setBusy(true);
     try {
-      const me = session.kind === "staff" ? session.staff : null;
       await updateDoc(fsDoc(db, sp(schoolId, `students/${sid}`)), text ? { feedback: text, feedbackByName: me?.name ?? "선생님", feedbackAt: serverTimestamp() } : { feedback: "", feedbackByName: "", feedbackAt: serverTimestamp() });
       toast(text ? "학생 홈에 선생님 한마디가 보여요." : "선생님 한마디를 지웠어요.");
       setNote(null);
@@ -63,7 +71,6 @@ export function StudentDetail() {
 
   if (!student) return <div className="page">{isAdmin ? adminStudent?.schoolId === schoolId && adminStudent.sid === sid ? "학생을 찾을 수 없어요." : "불러오는 중…" : students === null && !studentError ? "불러오는 중…" : "현재 담당 범위에서 학생을 찾을 수 없어요. 현황에서 학급을 선택해 주세요."}</div>;
   // 이름 고치기: 담임(우리 반)·관리자만 (학생은 첫 로그인 때 한 번만 입력)
-  const me = session.kind === "staff" ? session.staff : null;
   const canRename = !!me && (me.role === "admin" || (me.homeroom === true && me.grade === student.grade && me.classNo === student.classNo));
   async function rename() {
     const n = await askText({ title: "학생 이름 고치기", label: `${student!.grade}학년 ${student!.classNo}반 ${student!.number}번`, initial: student!.name, placeholder: "예: 홍길동", maxLength: 20 });
@@ -85,13 +92,13 @@ export function StudentDetail() {
       </div>
       <div className="section-title">선생님 한마디 (선택 · 학생 홈에 보여요)</div>
       <div className="card flat stack" style={{ background: "var(--navy-50)" }}>
-        {note === null ? (
+        {note === null || !canEditFeedback ? (
           <>
-            {student.feedback ? <div style={{ whiteSpace: "pre-line" }}>“{student.feedback}” <span className="tiny">— {student.feedbackByName}</span></div> : <span className="small muted">아직 남긴 한마디가 없어요. 격려나 다음 도전을 짧게 적어 주세요.</span>}
-            <div className="row" style={{ gap: 6 }}>
+            {student.feedback ? <div style={{ whiteSpace: "pre-line" }}>“{student.feedback}” <span className="tiny">— {student.feedbackByName}</span></div> : <span className="small muted">아직 남긴 한마디가 없어요.{canEditFeedback && " 격려나 다음 도전을 짧게 적어 주세요."}</span>}
+            {canEditFeedback ? <div className="row" style={{ gap: 6 }}>
               <button className="btn secondary sm" onClick={() => setNote(student.feedback ?? "")}><PixelIcon name="speech" size={14} /> {student.feedback ? "고치기" : "한마디 남기기"}</button>
               {student.feedback && <button className="btn ghost sm" disabled={busy} onClick={() => saveNote("")}>지우기</button>}
-            </div>
+            </div> : <span className="small muted">선생님 한마디는 담임교사와 관리자가 작성·수정해요.</span>}
           </>
         ) : (
           <>

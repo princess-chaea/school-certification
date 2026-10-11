@@ -7,3 +7,4 @@ export { importRoster, startNewYear, seedSentenceSets, seedDemo, clearDemo, reco
 export { whoami, searchSchools, schoolPrograms, requestJoin, approveSchoolRequest, claimAdmin } from "./tenancy.js";
 export { bulkRecognize } from "./bulkRecognition.js";
 export { certificationStatus } from "./certificationStatus.js";
+export { manageStaff } from "./manageStaff.js";

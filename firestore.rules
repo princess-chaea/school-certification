@@ -89,27 +89,28 @@ service cloud.firestore {
         allow read: if (signedIn() && request.auth.uid == uid) || isAdmin();
         allow create: if false;
         // 승인 대기 중에는 본인이 소속 정보만 수정 가능
-        allow update: if isAdmin()
+        // Role/status changes and deletion use manageStaff to preserve the last active administrator.
+        allow update: if (isAdmin() && !request.resource.data.diff(resource.data).affectedKeys().hasAny(['role', 'status']))
           || (signedIn() && request.auth.uid == uid
               && (onlyChanges(['name', 'updatedAt']) || (resource.data.get('bulkRecognitionPrograms', []).size() == 0
                   && request.resource.data.get('subjectClasses', []) is list
                   && request.resource.data.get('subjectClasses', []).size() <= 594
                   && onlyChanges(['name', 'homeroom', 'subject', 'grade', 'classNo', 'grades', 'programs', 'subjectClasses', 'updatedAt']))));
-        allow delete: if isAdmin();
+        allow delete: if false;
       }
 
       // 학생 명단 (현재 학년도)
       match /students/{sid} {
         allow get: if isSelfStudent(sid) || canSeeClass(resource.data.grade, resource.data.classNo);
         allow list: if isAdmin() || (isStaff() && canSeeClass(resource.data.grade, resource.data.classNo));
-        // 학생: 명단에 이름이 비어 있을 때 한 번만 직접 입력 (이후 수정은 담임·학교 담당자)
+        // 학생: 명단에 이름이 비어 있을 때 한 번만 직접 입력 (이후 수정은 담임·관리자)
         allow update: if (isSelfStudent(sid) && onlyChanges(['lastLoginAt']))
           || (isSelfStudent(sid) && resource.data.get('name', '') == '' && onlyChanges(['name', 'nameSetAt'])
               && request.resource.data.name is string && request.resource.data.name.trim().size() >= 2 && request.resource.data.name.size() <= 20)
           || ((isAdmin() || (isStaff() && isHomeroomOf(resource.data.grade, resource.data.classNo)))
               && onlyChanges(['name', 'number', 'active', 'note', 'updatedAt']))
-          // 선생님 한마디: 이 학생을 볼 수 있는 교사(담당자·담임·해당 학년 전담)
-          || (canSeeClass(resource.data.grade, resource.data.classNo)
+          // 선생님 한마디: 담임 또는 관리자만 공용 한마디를 수정
+          || ((isAdmin() || (isStaff() && isHomeroomOf(resource.data.grade, resource.data.classNo)))
               && onlyChanges(['feedback', 'feedbackByName', 'feedbackAt'])
               && request.resource.data.feedback is string && request.resource.data.feedback.size() <= 300);
         // 담임은 계정 없는 학생(1~2학년 등)을 자기 반에 직접 추가 가능 (계정 있는 학생은 관리자 CSV 등록)

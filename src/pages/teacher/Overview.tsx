@@ -1,3 +1,5 @@
+import { useRef, useState } from "react";
+import { httpsCallable } from "firebase/functions";
 import { useNavigate } from "react-router-dom";
 import { where, orderBy, type QueryConstraint } from "firebase/firestore";
 import { useCollection } from "../../lib/data";
@@ -5,7 +7,11 @@ import { sp, useSchoolId } from "../../lib/tenant";
 import { useConfig } from "../../lib/config";
 import { useSchool } from "../../lib/school";
 import type { StudentDoc } from "../../lib/types";
-import { MedalBadge, Empty } from "../../components/ui";
+import { MedalBadge, Empty, toast } from "../../components/ui";
+import { Modal } from "../../components/Modal";
+import { functions } from "../../firebase";
+import { createNameRosterCsv, decodeNameRosterCsv, parseNameRosterCsv, NAME_ROSTER_LIMIT, type NameRosterStudent, type NameRosterUpdate } from "../../lib/nameRosterCsv";
+import "./NameRosterCsv.css";
 import { PageHeader } from "../../components/Layout";
 import { PixelIcon } from "../../components/Pixel";
 import { ScopeBar, useScope, canTeachClassProgram } from "./scope";
@@ -23,6 +29,83 @@ export function useScopedStudents() {
 
 export const medalOf = (s: StudentDoc, id: string): Medal | undefined => s.progress?.[id]?.medal;
 export const countOf = (s: StudentDoc, id: string): number => s.progress?.[id]?.count ?? 0;
+
+function NameRosterControls({ students }: { students: NameRosterStudent[] }) {
+  const schoolId = useSchoolId();
+  const { scope } = useScope();
+  const input = useRef<HTMLInputElement>(null);
+  const saving = useRef(false);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+  const [preview, setPreview] = useState<{ text: string; rows: NameRosterUpdate[]; unchanged: number } | null>(null);
+  const oversized = students.length > NAME_ROSTER_LIMIT;
+  const empty = students.length === 0;
+
+  function download() {
+    const url = URL.createObjectURL(new Blob([createNameRosterCsv(students)], { type: "text/csv;charset=utf-8" }));
+    const anchor = document.createElement("a");
+    anchor.href = url;
+    anchor.download = `학생이름_${scope.grade}학년_${scope.classNo ? `${scope.classNo}반` : "전체반"}.csv`;
+    document.body.appendChild(anchor);
+    anchor.click();
+    anchor.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+  }
+
+  async function choose(file?: File) {
+    if (!file) return;
+    setError("");
+    setPreview(null);
+    try {
+      if (file.size > 1024 * 1024) throw new Error("CSV 파일은 1MB 이하로 올려 주세요.");
+      const text = decodeNameRosterCsv(await file.arrayBuffer());
+      const parsed = parseNameRosterCsv(text, students);
+      if (!parsed.rows.length) { toast("바뀐 이름이 없어요. 빈 이름 칸은 기존 이름을 유지해요."); return; }
+      setPreview({ text, ...parsed });
+    } catch (e) { setError((e as Error).message); }
+  }
+
+  async function save() {
+    if (!preview || saving.current) return;
+    saving.current = true;
+    setBusy(true);
+    setError("");
+    try {
+      const parsed = parseNameRosterCsv(preview.text, students);
+      if (!parsed.rows.length) { setPreview(null); toast("이미 같은 이름으로 저장되어 있어요."); return; }
+      const result = await httpsCallable<unknown, { updated: number; unchanged: number }>(functions, "updateClassStudentNames")({ schoolId, grade: scope.grade, classNo: scope.classNo, rows: parsed.rows });
+      setPreview(null);
+      toast(`${result.data.updated}명의 이름을 저장했어요. 활동 기록과 계정은 그대로 유지돼요.`);
+    } catch (e) { setError("이름을 저장하지 못했어요: " + (e as Error).message); }
+    finally { saving.current = false; setBusy(false); }
+  }
+
+  return <>
+    <div className="name-roster-heading">
+      <div className="section-title">학생별 현황</div>
+      <div className="name-roster-actions">
+        <button className="btn secondary sm" onClick={download} disabled={busy || oversized || empty}><PixelIcon name="download" size={16} /> 이름 CSV 내려받기</button>
+        <button className="btn sm" onClick={() => input.current?.click()} disabled={busy || oversized || empty}><PixelIcon name="upload" size={16} /> 이름 CSV 올리기</button>
+        <input ref={input} type="file" accept=".csv,text/csv" hidden aria-label="학생 이름 CSV 파일" onChange={(e) => { void choose(e.currentTarget.files?.[0]); e.currentTarget.value = ""; }} />
+      </div>
+    </div>
+    <p className="name-roster-help small muted">현재 범위의 실제 학생 {students.length}명 · CSV의 <strong>이름 칸만</strong> 입력 후 올려 주세요. 빈칸은 유지되며, 이메일·활동 기록·인증 진행도는 바뀌지 않아요.</p>
+    {empty && <p className="name-roster-help small muted">예시 학생은 이름 CSV에서 제외돼요. 실제 학생 명단을 등록해 주세요.</p>}
+    {oversized && <p className="name-roster-error" role="status">한 번에 400명까지 입력할 수 있어요. 위에서 반을 선택해 주세요.</p>}
+    {error && !preview && <p className="name-roster-error" role="alert">{error}</p>}
+    {preview && <Modal title="학생 이름 변경 확인" icon="users" onClose={() => { if (!saving.current) setPreview(null); }}>
+      <p>이름 {preview.rows.length}개를 변경해요. 빈칸·동일 이름 {preview.unchanged}개는 그대로 유지해요.</p>
+      <div className="name-roster-preview">
+        {preview.rows.map((row) => <div key={row.sid}><b>{row.grade}학년 {row.classNo}반 {row.number}번</b><span>{students.find((s) => s.id === row.sid)?.name || "(이름 입력 전)"} → <strong>{row.name}</strong></span></div>)}
+      </div>
+      {error && <p className="name-roster-error" role="alert">{error}</p>}
+      <div className="modal-actions">
+        <button className="btn" disabled={busy} onClick={() => void save()}>{busy ? "저장 중…" : `${preview.rows.length}명 이름 저장`}</button>
+        <button className="btn ghost" disabled={busy} onClick={() => setPreview(null)}>취소</button>
+      </div>
+    </Modal>}
+  </>;
+}
 
 export function MedalDistribution({ students, program }: { students: StudentDoc[]; program: ProgramDef }) {
   const eligible = students.filter((s) => program.grades.includes(s.grade));
@@ -64,6 +147,7 @@ export function Overview() {
   const all = activePrograms(config, scope.grade);
   const programs = scope.program ? all.filter((p) => p.id === scope.program) : all;
   const list = rows ?? [];
+  const nameRosterStudents = list.filter((s) => !s.isDemo);
   const anyCert = list.filter((s) => programs.some((p) => isCertified(medalOf(s, p.id)))).length;
   const participants = list.filter((s) => programs.some((p) => countOf(s, p.id) > 0)).length;
   const loggedIn = list.filter((s) => s.hasAccount).length;
@@ -87,7 +171,7 @@ export function Overview() {
           <div className="grid grid-3" style={{ marginTop: 14 }}>
             {programs.map((p) => <MedalDistribution key={p.id} students={list} program={p} />)}
           </div>
-          <div className="section-title">학생별 현황</div>
+          <NameRosterControls key={`${scope.grade}-${scope.classNo}-${scope.program}`} students={nameRosterStudents} />
           <div className="table-wrap">
             <table className="table">
               <thead>

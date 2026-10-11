@@ -1,0 +1,11 @@
+.name-roster-heading { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 12px; margin-top: 22px; }
+.name-roster-heading .section-title { margin: 0; }
+.name-roster-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.name-roster-help { margin: 8px 0 12px; line-height: 1.6; }
+.name-roster-error { color: #a12626; overflow-wrap: anywhere; line-height: 1.6; }
+.name-roster-preview { display: grid; gap: 10px; max-height: 42dvh; overflow: auto; }
+.name-roster-preview > div { display: grid; gap: 4px; padding: 10px; border: 1px solid var(--line); border-radius: 8px; overflow-wrap: anywhere; }
+@media (max-width: 560px) {
+  .name-roster-actions { width: 100%; }
+  .name-roster-actions .btn { flex: 1 1 150px; justify-content: center; white-space: normal; }
+}

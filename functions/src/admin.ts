@@ -1,10 +1,10 @@
 import { onCall, HttpsError } from "firebase-functions/v2/https";
 import { getStorage } from "firebase-admin/storage";
 import { logger } from "firebase-functions";
-import { db, REGION, FieldValue, requireStaff, requireSchoolId, loadConfig, loadSchool, sp } from "./common.js";
+import { db, REGION, FieldValue, requireStaff, requireSchoolId, loadConfig, loadSchool, sp, type StaffDoc } from "./common.js";
 import { recomputeStudent } from "./progress.js";
 import { activePrograms, isCertified, taskSetIds, type StudentProgress } from "./shared/domain.js";
-import { studentIdFor, englishItemId, type RosterRow } from "./shared/roster.js";
+import { studentIdFor, englishItemId, validateRosterRows, validateNameUpdateRows, canUpdateClassStudentNames, type RosterRow } from "./shared/roster.js";
 import task1 from "./shared/data/task1-cartoon.json" with { type: "json" };
 import task3g4 from "./shared/data/task3-grade4.json" with { type: "json" };
 import task3g5 from "./shared/data/task3-grade5.json" with { type: "json" };
@@ -17,9 +17,19 @@ export const importRoster = onCall({ region: REGION, timeoutSeconds: 300 }, asyn
   const { rows, deactivateMissing } = (req.data ?? {}) as { rows?: RosterRow[]; deactivateMissing?: boolean };
   if (!Array.isArray(rows) || !rows.length) throw new HttpsError("invalid-argument", "등록할 학생이 없어요.");
   if (rows.length > 3000) throw new HttpsError("invalid-argument", "한 번에 3000명까지 올릴 수 있어요.");
+  let validatedRows: RosterRow[];
+  try { validatedRows = validateRosterRows(rows); } catch (error) { throw new HttpsError("invalid-argument", (error as Error).message); }
   const school = await loadSchool(schoolId);
   const year = school.year;
   const existing = new Map((await db.collection(sp(schoolId, "students")).get()).docs.map((d) => [d.id, d.data()]));
+  const requestedIds = new Set(validatedRows.map((row) => studentIdFor(row, year)));
+  const existingSeats = new Map<string, string>();
+  for (const [sid, student] of existing) {
+    if (student.active !== false && student.isDemo !== true && student.year === year && !requestedIds.has(sid)) existingSeats.set(`${student.grade}-${student.classNo}-${student.number}`, sid);
+  }
+  for (const row of validatedRows) {
+    if (existingSeats.has(`${row.grade}-${row.classNo}-${row.number}`)) throw new HttpsError("failed-precondition", "같은 학년·반·번호에 다른 학생이 있어요. 기존 명단을 확인해 주세요.");
+  }
   const incoming = new Set<string>();
   let created = 0;
   let updated = 0;
@@ -30,12 +40,9 @@ export const importRoster = onCall({ region: REGION, timeoutSeconds: 300 }, asyn
     batch = db.batch();
     n = 0;
   };
-  for (const r of rows) {
-    const grade = Number(r.grade), classNo = Number(r.classNo), number = Number(r.number);
-    const name = String(r.name ?? "").trim().slice(0, 30);
-    const email = String(r.email ?? "").trim().toLowerCase();
-    // 이름은 선택(계정 있는 학생만): 비우면 학생이 첫 로그인 때 입력. 이미 있는 이름은 빈 값으로 덮어쓰지 않음
-    if (!(grade >= 1 && grade <= 6) || !(classNo >= 1) || (!name && !email)) continue;
+  for (const r of validatedRows) {
+    const { grade, classNo, number, name, email } = r;
+    // 이름은 선택. 이미 있는 이름은 빈 값으로 덮어쓰지 않는다.
     const sid = studentIdFor({ email, grade, classNo, number }, year);
     incoming.add(sid);
     const data = { sid, email, grade, classNo, number, ...(name ? { name } : {}), year, active: true, updatedAt: FieldValue.serverTimestamp() };
@@ -64,6 +71,40 @@ export const importRoster = onCall({ region: REGION, timeoutSeconds: 300 }, asyn
   }
   await flush();
   return { created, updated, deactivated, year };
+});
+
+/** 담당 학급 학생 이름만 일괄 변경한다. 모든 행 검증 후 한 트랜잭션으로 반영. */
+export const updateClassStudentNames = onCall({ region: REGION }, async (req) => {
+  const schoolId = requireSchoolId(req.data);
+  const staff = await requireStaff(req, schoolId);
+  const { grade, classNo, rows } = req.data ?? {};
+  let input: ReturnType<typeof validateNameUpdateRows>;
+  try { input = validateNameUpdateRows(rows, grade, classNo); } catch (error) { throw new HttpsError("invalid-argument", (error as Error).message); }
+  for (const row of input) {
+    if (!canUpdateClassStudentNames(staff, row.grade, row.classNo)) throw new HttpsError("permission-denied", "담당하는 학급의 학생 이름만 변경할 수 있어요.");
+  }
+  const school = await loadSchool(schoolId);
+  return db.runTransaction(async (tx) => {
+    const [staffSnap, superSnap, schoolSnap] = await tx.getAll(db.doc(sp(schoolId, `staff/${staff.uid}`)), db.doc(`superAdmins/${staff.uid}`), db.doc(sp(schoolId)));
+    const currentStaff = (superSnap.exists ? { role: "admin", status: "active" } : staffSnap.data()) as StaffDoc | undefined;
+    if (!currentStaff || input.some((row) => !canUpdateClassStudentNames(currentStaff, row.grade, row.classNo))) throw new HttpsError("permission-denied", "담당 학급 권한이 변경되었어요. 다시 확인해 주세요.");
+    if (!schoolSnap.exists || schoolSnap.get("year") !== school.year) throw new HttpsError("failed-precondition", "학년도가 변경되었어요. 명단을 다시 내려받아 주세요.");
+    const refs = input.map((row) => db.doc(sp(schoolId, `students/${row.sid}`)));
+    const snapshots = await tx.getAll(...refs);
+    let updated = 0;
+    let unchanged = 0;
+    for (let i = 0; i < input.length; i++) {
+      const row = input[i];
+      const student = snapshots[i].data();
+      if (!student || student.sid !== row.sid || student.grade !== row.grade || student.classNo !== row.classNo || student.number !== row.number || student.year !== school.year || student.active === false || student.isDemo === true) throw new HttpsError("failed-precondition", "학생 명단이 변경되었어요. 현재 명단을 다시 내려받아 주세요.");
+    }
+    for (let i = 0; i < input.length; i++) {
+      if (snapshots[i].get("name") === input[i].name) { unchanged++; continue; }
+      tx.update(refs[i], { name: input[i].name, updatedAt: FieldValue.serverTimestamp() });
+      updated++;
+    }
+    return { updated, unchanged };
+  });
 });
 
 /**

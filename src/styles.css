@@ -190,6 +190,10 @@ table.table td.num { text-align: right; font-variant-numeric: tabular-nums; }
 .members-tabs { margin-bottom: 14px; }
 .members-tabs .choice { align-items: center; gap: 4px; white-space: nowrap; }
 .members-upload-tab { margin-left: auto; }
+.member-filter-controls { align-items: end; }
+.member-filter-field { flex: 1 1 150px; max-width: 240px; min-width: 0; }
+.member-filter-field .input { width: 100%; }
+.member-filter-result { margin-left: auto; white-space: nowrap; }
 .members-table { table-layout: fixed; }
 .members-table--teacher th:nth-child(1) { width: 4%; }
 .members-table--teacher th:nth-child(2) { width: 12%; }

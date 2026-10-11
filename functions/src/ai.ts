@@ -4,14 +4,20 @@ import { z } from "zod";
 import { getStorage } from "firebase-admin/storage";
 import { onDocumentCreated } from "firebase-functions/v2/firestore";
 import type { ProgramDef, TaskDef } from "./shared/domain.js";
-import { defineSecret } from "firebase-functions/params";
+import { defineSecret, defineString } from "firebase-functions/params";
 import { logger } from "firebase-functions";
 import { db, loadConfig, REGION, FieldValue, todayKey, sp } from "./common.js";
 
 export const ANTHROPIC_API_KEY = defineSecret("ANTHROPIC_API_KEY");
+const ANTHROPIC_WORKSPACE_ID = defineString("ANTHROPIC_WORKSPACE_ID", {
+  description: "Anthropic workspace ID for AI review requests",
+});
 
 function client() {
-  return new Anthropic({ apiKey: ANTHROPIC_API_KEY.value() });
+  return new Anthropic({
+    apiKey: ANTHROPIC_API_KEY.value(),
+    defaultHeaders: { "anthropic-workspace-id": ANTHROPIC_WORKSPACE_ID.value() },
+  });
 }
 
 /** 하루 AI 호출 상한 확인 + 사용량 기록. 상한을 넘으면 false */
@@ -110,10 +116,12 @@ export const onSubmissionCreated = onDocumentCreated(
       logger.warn("AI daily limit reached");
       return;
     }
+    let errorPhase: "photo_download" | "ai_request_or_parse" | "review_save" = "photo_download";
     try {
       const [buf] = await getStorage().bucket().file(data.photoPath).download();
       const mediaType = (data.photoType as string) || "image/jpeg";
       const model = config.ai.photoModel;
+      errorPhase = "ai_request_or_parse";
       const response = await client().messages.parse({
         model,
         max_tokens: 2048,
@@ -129,15 +137,31 @@ export const onSubmissionCreated = onDocumentCreated(
           },
         ],
       });
-      await recordTokens(schoolId, response.usage, model);
+      // Usage accounting must not turn a completed review into a failed review.
+      try {
+        await recordTokens(schoolId, response.usage, model);
+      } catch (err) {
+        logger.error("photo review token accounting failed", { id: snap.id, errorPhase: "token_usage", err: String(err), stack: err instanceof Error ? err.stack : undefined });
+      }
+      errorPhase = "review_save";
       if (response.stop_reason === "refusal" || !response.parsed_output) {
-        await saveReview(schoolId, snap.id, data, { verdict: "check", reason: "AI가 판단하지 못했어요. 선생님 확인이 필요해요.", model });
+        await saveReview(schoolId, snap.id, data, {
+          verdict: "check", reason: "사진의 활동 여부를 자동으로 판단하지 못했어요. 선생님이 확인해 주세요.", model,
+          errorPhase: "ai_request_or_parse", errorCategory: response.stop_reason === "refusal" ? "refusal" : "missing_output",
+        });
         return;
       }
       await saveReview(schoolId, snap.id, data, { ...response.parsed_output, model });
     } catch (err) {
-      logger.error("photo review failed", { id: event.params.id, err: String(err) });
-      await saveReview(schoolId, snap.id, data, { verdict: "check", reason: "AI 확인 중 오류가 났어요." });
+      logger.error("photo review failed", { id: event.params.id, errorPhase, err: String(err), stack: err instanceof Error ? err.stack : undefined });
+      const reasons = {
+        photo_download: "첨부 사진을 불러오지 못해 활동을 확인하지 못했어요. 선생님이 사진을 확인해 주세요.",
+        ai_request_or_parse: "자동 확인 서비스의 응답을 받거나 해석하지 못했어요. 선생님이 활동을 확인해 주세요.",
+        review_save: "자동 확인 결과를 저장하지 못했어요. 선생님이 활동을 확인해 주세요.",
+      };
+      await saveReview(schoolId, snap.id, data, {
+        verdict: "check", reason: reasons[errorPhase], errorPhase, errorCategory: `${errorPhase}_failed`,
+      });
     }
   },
 );
